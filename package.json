@@ -1,0 +1,24 @@
+{
+  "name": "rocket-arena",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Jeu 3D inspiré de Rocket League — Three.js + moteur physique dédié 120 Hz — prêt pour Netlify",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test:physics": "node tests/physics.test.mjs",
+    "test:bots": "node tests/bots.test.mjs pro 3 120",
+    "test": "node tests/physics.test.mjs && node tests/bots.test.mjs pro 2 60"
+  },
+  "dependencies": {
+    "three": "^0.170.0"
+  },
+  "devDependencies": {
+    "vite": "^5.4.11"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
