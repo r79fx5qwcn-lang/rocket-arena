@@ -1,16 +1,20 @@
 // Rocket League style camera: car cam + ball cam, smooth, never jerky.
 import * as THREE from 'three';
 import { UU_TO_M as S } from '../physics/constants.js';
-import { arenaSdf } from '../physics/Arena.js';
+import { arenaSdf, arenaNormal } from '../physics/Arena.js';
+import { Vec3 } from '../physics/math.js';
 
 const _dir = new THREE.Vector3(), _f = new THREE.Vector3(), _target = new THREE.Vector3(), _desired = new THREE.Vector3();
 const _look = new THREE.Vector3(), _tmp = new THREE.Vector3(), _q = new THREE.Quaternion();
+const _nrm = new Vec3();
+const _alt = new THREE.Vector3(), _up = new THREE.Vector3(), _anchor = new THREE.Vector3(), _seg = new THREE.Vector3(), _probe = new THREE.Vector3();
 
 export class CameraController {
   constructor(camera, settings) {
     this.camera = camera;
     this.settings = settings;
-    this.dir = new THREE.Vector3(0, 0, 1); // horizontal viewing direction
+    this.dir = new THREE.Vector3(0, 0, 1); // viewing direction (perpendicular to up)
+    this.up = new THREE.Vector3(0, 1, 0);
     this.pos = new THREE.Vector3(0, 5, -10);
     this.lookAt = new THREE.Vector3();
     this.swivel = 0; this.swivelPitch = 0;
@@ -58,67 +62,90 @@ export class CameraController {
       const k = 1 - Math.exp(-dt * 3);
       this.pos.lerp(_desired, k);
       this.lookAt.lerp(o.center, k);
+      this.up.set(0, 1, 0);
+      cam.up.set(0, 1, 0);
       cam.position.copy(this.pos);
       cam.lookAt(this.lookAt);
       return;
     }
 
     const carPos = ctx.carPos, ballPos = ctx.ballPos;
-    // ---- desired horizontal direction
+    // ---- camera "up": follows the surface the car drives on (walls, ceiling) like in RL,
+    // world up in the air. This keeps the camera inside the arena on walls / ceiling.
+    _up.set(0, 1, 0);
+    if (ctx.onSurface) {
+      _up.set(0, 1, 0).applyQuaternion(ctx.carQuat);
+      if (_up.y > 0.8) _up.set(0, 1, 0); // flat-ish floor: keep a level horizon
+    }
+    if (!this.initialized) this.up.copy(_up);
+    this.up.lerp(_up, 1 - Math.exp(-dt * 4)).normalize();
+    const up = this.up;
+
+    // ---- desired viewing direction, in the plane perpendicular to `up`
     this.ballCamBlend += ((ctx.ballCam ? 1 : 0) - this.ballCamBlend) * (1 - Math.exp(-dt * 6));
     if (ctx.ballCam) {
-      _dir.set(ballPos.x - carPos.x, 0, ballPos.z - carPos.z);
+      _dir.copy(ballPos).sub(carPos);
     } else {
-      _f.set(1, 0, 0).applyQuaternion(ctx.carQuat);
-      _dir.set(_f.x, 0, _f.z);
-      if (_dir.lengthSq() < 0.04) {
-        // car pointing up/down (wall, aerial): use velocity, then keep previous
-        _dir.set(ctx.carVel.x, 0, ctx.carVel.z);
-        if (_dir.lengthSq() < 100 * 100) _dir.copy(this.dir);
+      _dir.set(1, 0, 0).applyQuaternion(ctx.carQuat);
+      if (Math.abs(_dir.dot(up)) > 0.9) {
+        // nose along `up` (aerial): use velocity
+        _dir.set(ctx.carVel.x, ctx.carVel.y, ctx.carVel.z);
       }
-      // reversing on the ground: RL keeps looking forward
     }
-    if (_dir.lengthSq() < 1e-6) _dir.copy(this.dir);
+    _dir.addScaledVector(up, -_dir.dot(up));
+    if (_dir.lengthSq() < 1e-4) _dir.copy(this.dir);
     _dir.normalize();
-    if (!this.initialized) { this.dir.copy(_dir); }
+    // keep the previous direction in the new plane
+    this.dir.addScaledVector(up, -this.dir.dot(up));
+    if (this.dir.lengthSq() < 1e-4 || !this.initialized) this.dir.copy(_dir);
+    this.dir.normalize();
+    // rotate smoothly toward the target around `up` (handles 180° turns)
     const rate = THREE.MathUtils.lerp(3.5, 16, st.stiffness);
-    // rotate this.dir toward _dir smoothly (handles 180° turns)
-    const cur = Math.atan2(this.dir.x, this.dir.z), tgt = Math.atan2(_dir.x, _dir.z);
-    let d = tgt - cur;
-    while (d > Math.PI) d -= Math.PI * 2;
-    while (d < -Math.PI) d += Math.PI * 2;
-    const ang = cur + d * (1 - Math.exp(-dt * rate));
-    this.dir.set(Math.sin(ang), 0, Math.cos(ang));
+    _tmp.crossVectors(this.dir, _dir);
+    const ang = Math.atan2(_tmp.dot(up), this.dir.dot(_dir));
+    _q.setFromAxisAngle(up, ang * (1 - Math.exp(-dt * rate)));
+    this.dir.applyQuaternion(_q).normalize();
 
     // swivel (right stick / mouse)
     const sw = ctx.swivel || { x: 0, y: 0 };
     const swRate = 1 - Math.exp(-dt * st.swivelSpeed * 2);
     this.swivel += (sw.x * Math.PI * 0.95 - this.swivel) * swRate;
     this.swivelPitch += (sw.y * 0.6 - this.swivelPitch) * swRate;
-    const yaw = Math.atan2(this.dir.x, this.dir.z) + this.swivel;
-    _dir.set(Math.sin(yaw), 0, Math.cos(yaw));
+    _q.setFromAxisAngle(up, -this.swivel);
+    const view = _f.copy(this.dir).applyQuaternion(_q);
 
     // ---- position
     const speed = ctx.carVel.length();
     const dist = st.distance * S * (1 + Math.min(1, speed / 2300) * 0.12);
-    const height = st.height * S;
-    _desired.copy(carPos).addScaledVector(_dir, -dist);
-    _desired.y = carPos.y + height + this.swivelPitch * 2;
-    this.clampInside(_desired, carPos);
+    const height = st.height * S + this.swivelPitch * 2;
+    _anchor.copy(carPos).addScaledVector(up, 1.1);
+    if (arenaSdf(_anchor.x / S, _anchor.y / S, _anchor.z / S) > -90) {
+      // car close to a wall/ceiling in the air: anchor the camera away from that surface
+      arenaNormal(carPos.x / S, carPos.y / S, carPos.z / S, _nrm);
+      _anchor.set(carPos.x + _nrm.x * 1.1, carPos.y + _nrm.y * 1.1, carPos.z + _nrm.z * 1.1);
+    }
+    _desired.copy(carPos).addScaledVector(view, -dist).addScaledVector(up, height);
+    const frac = this.clampInside(_desired, _anchor);
+    if (frac < 0.8) {
+      // blocked by a wall/ceiling behind the car: try a higher, closer viewpoint
+      _alt.copy(carPos).addScaledVector(view, -dist * 0.55).addScaledVector(up, height + dist * 0.5);
+      const fracAlt = this.clampInside(_alt, _anchor);
+      if (fracAlt * _alt.distanceTo(carPos) > frac * _desired.distanceTo(carPos) * 1.0 + 0.05) _desired.copy(_alt);
+    }
 
     // ---- look target
     const angle = THREE.MathUtils.degToRad(st.angle);
-    _look.copy(carPos).addScaledVector(_dir, dist * Math.cos(angle) * 2);
-    _look.y = carPos.y + height + Math.tan(angle) * dist * 2;
+    _look.copy(carPos).addScaledVector(view, dist * 2).addScaledVector(up, height + Math.tan(angle) * dist * 3);
     if (this.ballCamBlend > 0.001) {
       // ball cam: look toward the ball but keep the car in frame (clamped elevation)
       _tmp.copy(ballPos).sub(_desired);
-      const horiz = Math.hypot(_tmp.x, _tmp.z);
-      let elev = Math.atan2(_tmp.y, Math.max(horiz, 0.01));
+      const vert = _tmp.dot(up);
+      _tmp.addScaledVector(up, -vert);
+      const horiz = Math.max(_tmp.length(), 0.01);
+      let elev = Math.atan2(vert, horiz);
       elev = THREE.MathUtils.clamp(elev, THREE.MathUtils.degToRad(-25), THREE.MathUtils.degToRad(38));
-      const lx = _tmp.x / Math.max(horiz, 0.01), lz = _tmp.z / Math.max(horiz, 0.01);
-      _target.set(_desired.x + lx * 10, _desired.y + Math.tan(elev) * 10, _desired.z + lz * 10);
-      // keep the car in view: blend toward the car when the ball is high above
+      _tmp.multiplyScalar(1 / horiz);
+      _target.copy(_desired).addScaledVector(_tmp, 10).addScaledVector(up, Math.tan(elev) * 10);
       _look.lerp(_target, this.ballCamBlend);
     }
 
@@ -126,6 +153,7 @@ export class CameraController {
     const kl = this.initialized ? 1 - Math.exp(-dt * 16) : 1;
     this.pos.lerp(_desired, kp);
     this.lookAt.lerp(_look, kl);
+    this.clampInside(this.pos, _anchor); // the smoothed position must stay inside too
     this.initialized = true;
 
     cam.position.copy(this.pos);
@@ -136,16 +164,26 @@ export class CameraController {
       cam.position.z += Math.cos(t * 1.1) * this.shakeAmp * 0.25;
       this.shakeAmp *= Math.exp(-dt * 6);
     }
+    cam.up.copy(up);
     cam.lookAt(this.lookAt);
   }
 
-  // keep the camera inside the arena (and above the floor)
+  /**
+   * Keep the camera inside the arena with a safety margin: march from the anchor (car)
+   * toward the wanted position and stop before the first wall.
+   */
   clampInside(p, anchor) {
-    for (let i = 0; i < 6; i++) {
-      const d = arenaSdf(p.x / S, p.y / S, p.z / S);
-      if (d < -60) break;
-      p.lerp(anchor, 0.25);
+    const margin = 70; // uu
+    if (arenaSdf(p.x / S, p.y / S, p.z / S) < -margin) return 1;
+    _seg.copy(p).sub(anchor);
+    let lo = 0, hi = 1;
+    // if even the anchor is too close to a wall, accept it (car hugging the surface)
+    for (let i = 0; i < 14; i++) {
+      const mid = (lo + hi) / 2;
+      _probe.copy(anchor).addScaledVector(_seg, mid);
+      if (arenaSdf(_probe.x / S, _probe.y / S, _probe.z / S) < -margin) lo = mid; else hi = mid;
     }
-    if (p.y < 0.4) p.y = 0.4;
+    p.copy(anchor).addScaledVector(_seg, lo);
+    return lo;
   }
 }

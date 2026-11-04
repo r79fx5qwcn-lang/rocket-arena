@@ -4,6 +4,9 @@ import { CAR, BALL_HIT, BUMP_VEL_GROUND_CURVE, BUMP_VEL_AIR_CURVE, BUMP_UPWARD_C
 import { arenaSdf, arenaNormal } from './Arena.js';
 
 const HB = CAR.HITBOX_HALF, HO = CAR.HITBOX_OFFSET;
+// The ball barely spins the car (like in RL): its contacts act on a stiffer rotational inertia.
+// Keeps flicks / dribbles / air dribbles controllable and landings on the wheels.
+const BALL_ANG = 0.3;
 
 // 26 sample points on the car hitbox (corners, edge midpoints, face centres), local frame
 const SAMPLE_POINTS = [];
@@ -114,7 +117,11 @@ export function collideCarBall(car, ball, tick) {
   _cp.applyQuat(car.rot).add(car.pos);
 
   // relative velocity before the contact (for the Psyonix extra impulse)
-  _tmp2.copy(ball.vel).sub(car.vel);
+  // (uses the velocity of the car's surface at the contact point, so a car spinning
+  // during a dodge -- flicks, flip shots -- hits harder, as players expect)
+  _rel.copy(_cp).sub(car.pos);
+  car.pointVelocity(_rel, _tmp2);
+  _tmp2.scale(-1).add(ball.vel);
   const preRelSpeed = Math.min(_tmp2.length(), BALL_HIT.MAX_DELTA_VEL);
 
   _rel.copy(_cp).sub(car.pos);
@@ -125,7 +132,7 @@ export function collideCarBall(car, ball, tick) {
   const vn = _vb.dot(_n);
   let jn = 0;
   if (vn < 0) {
-    const kn = ball.invMass + car.effInvMass(_rel, _n);
+    const kn = ball.invMass + car.effInvMass(_rel, _n, BALL_ANG);
     jn = -(1 + CAR.BALL_RESTITUTION) * vn / kn;
     _J.copy(_n).scale(jn);
     // friction
@@ -134,7 +141,7 @@ export function collideCarBall(car, ball, tick) {
     if (vtl > 1e-3) {
       _vt.scale(1 / vtl);
       // ball effective tangential inverse mass: 1/m + R²/I
-      const kt = ball.invMass + R * R * ball.invInertia + car.effInvMass(_rel, _vt);
+      const kt = ball.invMass + R * R * ball.invInertia + car.effInvMass(_rel, _vt, BALL_ANG);
       const jt = Math.min(vtl / kt, CAR.BALL_FRICTION * jn);
       _J.addScaled(_vt, -jt);
     }
@@ -143,7 +150,7 @@ export function collideCarBall(car, ball, tick) {
     _tmp.crossVectors(_rb, _J).scale(ball.invInertia);
     ball.angVel.add(_tmp);
     _J.scale(-1);
-    car.applyImpulse(_J, _rel);
+    car.applyImpulse(_J, _rel, BALL_ANG);
   }
   // positional correction (ball takes most of it)
   const wb = 0.85;
@@ -153,7 +160,7 @@ export function collideCarBall(car, ball, tick) {
   // Psyonix "extra impulse": makes hits feel like Rocket League
   let extra = 0;
   // not re-applied while the contact is sustained (ball resting / dribbled on the roof)
-  if (tick > car.lastExtraHitTick + 4 && preRelSpeed > 0) {
+  if (tick > car.lastExtraHitTick + 12 && preRelSpeed > 0) {
     _tmp.copy(ball.pos).sub(car.pos);
     _tmp.y *= BALL_HIT.Z_SCALE;
     _tmp.normalize();

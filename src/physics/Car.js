@@ -103,18 +103,18 @@ export class Car {
     return out.applyQuat(this.rot);
   }
   /** impulse J applied at world-relative point rel */
-  applyImpulse(J, rel) {
+  applyImpulse(J, rel, angScale = 1) {
     this.vel.addScaled(J, this.invMass);
     _ia.crossVectors(rel, J);
     this.applyInvInertia(_ia, _ia);
-    this.angVel.add(_ia);
+    this.angVel.addScaled(_ia, angScale);
   }
   /** effective inverse mass along direction n at relative point rel */
-  effInvMass(rel, n) {
+  effInvMass(rel, n, angScale = 1) {
     _ia.crossVectors(rel, n);
     this.applyInvInertia(_ia, _ib);
     _ib.cross(rel);
-    return this.invMass + _ib.dot(n);
+    return this.invMass + _ib.dot(n) * angScale;
   }
   pointVelocity(rel, out) { return out.crossVectors(this.angVel, rel).add(this.vel); }
 
@@ -305,6 +305,20 @@ export class Car {
       _a.crossVectors(u, gn); // axis to rotate u toward gn
       this.angVel.addScaled(_a, CAR.AUTOROLL_TORQUE * 0.0959 * dt * 3);
       this.vel.addScaled(gn, -CAR.AUTOROLL_FORCE * dt);
+    }
+
+    // ---- self-righting: lying on its side, the car tips back onto its wheels
+    if (surf === 0 && this.bodyContact && !this.isJumping) {
+      const n = this.bodyContactNormal;
+      const d = u.dot(n);
+      if (d > -0.55 && d < 0.8) {
+        _a.crossVectors(u, n);
+        const len = _a.length();
+        if (len > 1e-3) {
+          this.angVel.addScaled(_a, (CAR.SELF_RIGHT_TORQUE / len) * Math.min(1, len * 1.5) * dt);
+          this.vel.addScaled(n, CAR.SELF_RIGHT_LIFT * dt);
+        }
+      }
     }
 
     this.updateJump(dt, u);

@@ -361,7 +361,7 @@ export class Game {
       const pv = s.carViews[0].model.root;
       const ballPos = s.ballView.mesh.position;
       if (!car.demolished) this.camCtl.update(dt, {
-        carPos: pv.position, carQuat: pv.quaternion, carVel: car.vel, ballPos,
+        carPos: pv.position, carQuat: pv.quaternion, carVel: car.vel, ballPos, onSurface: car.onGround,
         ballCam: this.ballCam && !s.world.ball.hidden, boosting: car.isBoosting, supersonic: car.isSupersonic, swivel: this.input.swivel,
       });
       this.gfx.focusShadow(pv.position.x, 0, pv.position.z);

@@ -11,6 +11,7 @@ npm run dev          # http://localhost:5173
 npm run build        # build de production dans dist/
 npm run preview      # sert le build localement
 npm run test:physics # 34 vérifications de la physique (headless, Node)
+npm test             # tout : physique, flicks/atterrissages, lissage de l'arène, matchs de bots
 ```
 
 Node 18 ou plus récent (Netlify est configuré sur Node 20).
@@ -88,10 +89,12 @@ Résultats de `npm run test:physics` (extraits) : vitesse max 1410 uu/s ; supers
 ## Limites et choix assumés
 
 - **Rapier n'est pas utilisé**. Rocket League tourne sur un contrôleur de voiture spécifique (roues ray-cast, sticky forces, impulsion de frappe, Z-damping…) posé sur un moteur généraliste. Ici, ce contrôleur est réimplémenté à l'identique. Les collisions avec l'arène se font sur un champ de distance analytique : surfaces parfaitement lisses, normales exactes, aucun effet de tunnel ni arête fantôme sur les murs courbes. Le moteur est déterministe, n'a aucune dépendance et se teste dans Node (prérequis pour un serveur de jeu en ligne). Brancher Rapier n'apporterait rien de plus pour ce cas d'usage.
-- **Géométrie approchée** : coins verticaux arrondis (rayon 1400 uu) au lieu des pans coupés de RL. Transitions sol/mur de 520 uu, nécessaires pour monter au mur à 2300 uu/s avec la limite de 5,5 rad/s.
+- **Géométrie approchée** : coins verticaux arrondis (rayon 1400 uu) au lieu des pans coupés de RL. Transitions sol/mur de 520 uu, nécessaires pour monter au mur à 2300 uu/s avec la limite de 5,5 rad/s. Près des buts, la courbe se resserre progressivement (300 uu), contourne les poteaux arrondis et continue à l'intérieur des buts (fond et plafond du but arrondis). Il n'y a donc aucun rebord où la voiture peut accrocher (`npm run test:arena` : 2 accrochages sur 600 trajets, sur la barre transversale et en entrant dans le but à 2200 uu/s).
+- **Caméra** : sur un mur ou au plafond, elle suit l'orientation de la surface, comme dans RL. Elle ne sort jamais de l'arène : marge de 70 uu, vérifiée sur 72 000 images de trajets aléatoires.
+- **Contacts balle → voiture** : la balle fait beaucoup moins tourner la voiture qu'un solide « brut ». Les flicks, dribbles et air dribbles restent ainsi contrôlables. Couchée sur le côté, la voiture se remet seule sur ses roues. Sur le toit, il faut sauter (auto-flip), comme dans RL.
 - **Dodges** : l'accélération angulaire (environ 100 rad/s²) et la vitesse de rotation pendant le dodge (10 rad/s, contre 5,5 hors dodge) ont été réglées pour qu'un flip fasse un tour complet en environ 0,65 s, comme dans le jeu. Les valeurs exactes de RL ne sont pas publiques.
 - **Plafond** : la sticky force est un peu plus forte au plafond pour pouvoir y rouler en accélérant. En relâchant, on tombe en gardant son flip (ceiling shot).
-- **Flicks** : ils sont 100 % physiques, donc moins « assistés » que dans RL. La puissance vient de la vitesse du dribble et du timing (sauter, puis flipper très vite).
+- **Flicks** : 100 % physiques. L'impulsion de frappe tient compte de la vitesse de la carrosserie au point de contact, donc une voiture qui tourne pendant un dodge frappe plus fort. Mesuré (`npm run test:landing`) : front flick et flick à 45° autour de +900 à +1100 uu/s, musty jusqu'à +1500 uu/s, toujours avec un atterrissage sur les roues.
 - **Multijoueur en ligne** : non inclus, car il faudrait un serveur. L'architecture est prête : moteur déterministe headless, `Controls.pack()`, `src/net/NetworkAdapter.js` (squelette WebSocket).
 - **Replays** : non inclus. La célébration après un but est une explosion avec caméra orbitale.
 

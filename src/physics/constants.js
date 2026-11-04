@@ -23,6 +23,10 @@ export const ARENA = {
   GOAL_HALF_W: 893,
   GOAL_H: 643,
   GOAL_DEPTH: 880,
+  GOAL_FLOOR_R: 300,  // floor/wall transition radius inside the goals and at the posts
+  GOAL_TAPER: 1100,   // the back wall transition grows from GOAL_FLOOR_R to FILLET_R over this width
+  GOAL_CORNER_R: 400, // plan radius of the back corners of the goals
+  POST_BLEND: 260,    // rounding of the goal posts in plan
 };
 
 // ---------- Ball ----------
@@ -116,6 +120,8 @@ export const CAR = {
   AUTOFLIP_TIME: 0.4,
   AUTOROLL_FORCE: 100,
   AUTOROLL_TORQUE: 80,
+  SELF_RIGHT_TORQUE: 16,  // rad/s² when lying on a side
+  SELF_RIGHT_LIFT: 250,
 
   DEMO_RESPAWN_TIME: 3,
   BUMP_COOLDOWN: 0.25,
