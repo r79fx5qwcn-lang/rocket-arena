@@ -11,7 +11,7 @@ npm run dev          # http://localhost:5173
 npm run build        # build de production dans dist/
 npm run preview      # sert le build localement
 npm run test:physics # 34 vérifications de la physique (headless, Node)
-npm test             # tout : physique, flicks/atterrissages, lissage de l'arène, matchs de bots
+npm test             # tout : physique, flicks/atterrissages, lissage de l'arène, réseau, matchs de bots
 ```
 
 Node 18 ou plus récent (Netlify est configuré sur Node 20).
@@ -24,6 +24,20 @@ Node 18 ou plus récent (Netlify est configuré sur Node 20).
 4. Clique sur **Deploy**. Le jeu est accessible sur l'URL publique fournie.
 
 Aucune variable d'environnement ni backend n'est nécessaire. Tout est généré dans le navigateur : textures, modèles 3D et sons. Aucun fichier média n'est à télécharger.
+
+## Jouer en ligne avec un ami
+
+1. **Toi :** menu **Jouer en ligne avec un ami**, puis choisis le format (1v1, 2v2 ou 3v3 ; des bots complètent les équipes) et clique sur **Créer la partie**.
+2. Un **code** s'affiche. Envoie-le à ton ami, ou clique sur **Copier le lien d'invitation** et envoie-lui le lien.
+3. **Ton ami :** il ouvre le lien (la partie se rejoint toute seule), ou il va dans **Jouer en ligne** et tape le code.
+4. Le match démarre pour vous deux. À la fin, l'hôte peut lancer une **revanche**.
+
+Comment ça marche : la connexion est **directe entre les deux navigateurs** (WebRTC via [PeerJS](https://peerjs.com)). Le service public gratuit de PeerJS sert seulement à mettre les deux joueurs en relation. Il n'y a aucun serveur à installer et ça marche directement sur Netlify. L'hôte fait tourner la simulation officielle. L'invité prédit sa propre voiture pour ne pas sentir le décalage, puis se recale sur l'hôte environ 30 fois par seconde. Le ping s'affiche en bas à gauche.
+
+À savoir :
+- **Garde l'onglet du jeu au premier plan, surtout l'hôte.** Les navigateurs mettent en pause les onglets cachés, donc le jeu se fige pour l'invité.
+- **La pause ne met pas le match en pause en ligne.** Elle ouvre seulement le menu.
+- **Certains réseaux bloquent les connexions directes** (entreprise, école, certains partages 4G). Dans ce cas, la connexion échoue, essaie un autre réseau.
 
 ## Commandes (clavier AZERTY, configurables)
 
@@ -68,7 +82,8 @@ src/
   ai/                 Bots (3 niveaux) : kickoffs, interceptions, tirs, sauts, aériens, rotations
   modes/              Déroulé du match : compte à rebours, chrono, buts, prolongation, fin
   ui/                 Menus (jouer, garage, paramètres, aide, pause), HUD, écran de fin
-  net/                Interface réseau prête pour le multijoueur en ligne (pas de backend requis)
+  net/                Multijoueur en ligne : PeerLink (WebRTC/PeerJS), NetSync (hôte autoritaire,
+                      prédiction + réconciliation côté invité), OnlineManager (lobby, revanche)
   core/               Boucle de jeu (physique 120 Hz + rendu interpolé), paramètres persistants
 tests/                Tests headless : physique (physics.test.mjs) et matchs de bots (bots.test.mjs)
 ```
@@ -95,7 +110,7 @@ Résultats de `npm run test:physics` (extraits) : vitesse max 1410 uu/s ; supers
 - **Dodges** : l'accélération angulaire (environ 100 rad/s²) et la vitesse de rotation pendant le dodge (10 rad/s, contre 5,5 hors dodge) ont été réglées pour qu'un flip fasse un tour complet en environ 0,65 s, comme dans le jeu. Les valeurs exactes de RL ne sont pas publiques.
 - **Plafond** : la sticky force est un peu plus forte au plafond pour pouvoir y rouler en accélérant. En relâchant, on tombe en gardant son flip (ceiling shot).
 - **Flicks** : 100 % physiques. L'impulsion de frappe tient compte de la vitesse de la carrosserie au point de contact, donc une voiture qui tourne pendant un dodge frappe plus fort. Mesuré (`npm run test:landing`) : front flick et flick à 45° autour de +900 à +1100 uu/s, musty jusqu'à +1500 uu/s, toujours avec un atterrissage sur les roues.
-- **Multijoueur en ligne** : non inclus, car il faudrait un serveur. L'architecture est prête : moteur déterministe headless, `Controls.pack()`, `src/net/NetworkAdapter.js` (squelette WebSocket).
+- **Multijoueur en ligne** : pair à pair, à 2 humains maximum (le reste des équipes en bots). Sans serveur dédié, l'hôte a l'avantage du ping 0 et l'invité joue avec une prédiction locale. `npm run test:net` simule le réseau : l'erreur de prédiction de l'invité reste autour de 10 uu en moyenne avec 200 ms de latence.
 - **Replays** : non inclus. La célébration après un but est une explosion avec caméra orbitale.
 
 ## Licence

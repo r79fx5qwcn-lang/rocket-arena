@@ -172,6 +172,17 @@ tr.me td { background: rgba(255,255,255,.05); font-weight: 700; }
 .end-screen .panel { width: min(820px, 94vw); }
 
 .fps { position: absolute; right: 8px; bottom: 6px; font-size: 13px; color: var(--muted); }
+.ping { position: absolute; left: 3vw; bottom: calc(4vh + 74px); padding: 5px 12px; background: rgba(8,12,26,.7); font-weight: 700; font-size: 14px; letter-spacing: .08em; color: #8fe39b; border-left: 3px solid #3ddc84; }
+.ping.bad { color: #ffb36b; border-left-color: #ff8a2a; }
+.online-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap: 18px; max-width: 1100px; }
+.online-grid h3 { margin: 0 0 12px; font-family: var(--display); font-style: italic; font-size: 26px; }
+.invite-code { font-family: var(--display); font-size: 54px; letter-spacing: .18em; color: var(--orange-2); text-shadow: 0 0 24px rgba(255,122,26,.5); margin: 6px 0; user-select: text; -webkit-user-select: text; }
+.status { min-height: 24px; margin-top: 10px; color: var(--muted); font-size: 17px; }
+.status.err { color: #ff7a7a; }
+.status.ok { color: #8fe39b; }
+input.code-input { font-family: var(--display); font-size: 30px; letter-spacing: .2em; text-transform: uppercase; width: 240px; text-align: center; }
+.spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--muted); border-top-color: var(--orange); border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: -2px; margin-right: 8px; }
+@keyframes spin { to { transform: rotate(360deg); } }
 .pause-menu { pointer-events: auto; }
 
 @media (max-width: 760px) {

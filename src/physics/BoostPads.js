@@ -6,6 +6,9 @@ export class BoostPads {
     for (const [x, z] of BOOST_PADS.BIG) this.pads.push({ x, z, big: true, active: true, timer: 0 });
     for (const [x, z] of BOOST_PADS.SMALL) this.pads.push({ x, z, big: false, active: true, timer: 0 });
   }
+  getState() { return this.pads.map((p) => (p.active ? -1 : Math.round(p.timer * 100) / 100)); }
+  setState(a) { a.forEach((t, i) => { const p = this.pads[i]; if (!p) return; p.active = t < 0; p.timer = t < 0 ? 0 : t; }); }
+
   reset() { for (const p of this.pads) { p.active = true; p.timer = 0; } }
 
   update(dt, cars, events) {

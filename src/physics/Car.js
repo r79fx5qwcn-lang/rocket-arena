@@ -82,6 +82,7 @@ export class Car {
     this.frozen = false;
 
     this.lastExtraHitTick = -10;
+    this.renderOffset = new Vec3(); // visual smoothing after network corrections
     this.bumpCooldowns = {};
     this.prevSpeedForBump = 0;
     this.events = []; // queued gameplay events consumed by the world (jump, flip, flipReset...)
@@ -119,6 +120,41 @@ export class Car {
   pointVelocity(rel, out) { return out.crossVectors(this.angVel, rel).add(this.vel); }
 
   savePrev() { this.prevPos.copy(this.pos); this.prevRot.copy(this.rot); }
+
+  // ---------- network state (everything needed to resume the simulation exactly) ----------
+  getState() {
+    const r = (v) => Math.round(v * 100) / 100;
+    const v3 = (v) => [r(v.x), r(v.y), r(v.z)];
+    const f = (this.hasJumped ? 1 : 0) | (this.isJumping ? 2 : 0) | (this.hasDoubleJumped ? 4 : 0) | (this.hasFlipped ? 8 : 0) |
+      (this.isFlipping ? 16 : 0) | (this.hasFlipDir ? 32 : 0) | (this.isBoosting ? 64 : 0) | (this.isSupersonic ? 128 : 0) |
+      (this.demolished ? 256 : 0) | (this.frozen ? 512 : 0) | (this.infiniteBoost ? 1024 : 0);
+    const st = this.stats;
+    return [this.id, v3(this.pos), v3(this.vel), v3(this.angVel),
+      [this.rot.x, this.rot.y, this.rot.z, this.rot.w].map((x) => Math.round(x * 1e5) / 1e5),
+      r(this.boost), f, r(this.jumpTime), r(this.flipTime), r(this.airTime), r(this.airTimeSinceJump), v3(this.flipRelTorque),
+      r(this.handbrakeVal), r(this.boostingTime), r(this.autoFlipTimer), r(this.supersonicTime), r(this.respawnTimer),
+      this.controls.pack(), this.lastControls.pack(),
+      [st.goals, st.shots, st.saves, st.touches, st.demos, Math.round(st.boostUsed), st.flipResets],
+      this.lastExtraHitTick, this.lastTouchTick ?? -10];
+  }
+
+  setState(a) {
+    const set3 = (v, x) => v.set(x[0], x[1], x[2]);
+    set3(this.pos, a[1]); set3(this.vel, a[2]); set3(this.angVel, a[3]);
+    this.rot.set(a[4][0], a[4][1], a[4][2], a[4][3]).normalize();
+    this.boost = a[5];
+    const f = a[6];
+    this.hasJumped = !!(f & 1); this.isJumping = !!(f & 2); this.hasDoubleJumped = !!(f & 4); this.hasFlipped = !!(f & 8);
+    this.isFlipping = !!(f & 16); this.hasFlipDir = !!(f & 32); this.isBoosting = !!(f & 64); this.isSupersonic = !!(f & 128);
+    this.demolished = !!(f & 256); this.frozen = !!(f & 512); this.infiniteBoost = !!(f & 1024);
+    this.jumpTime = a[7]; this.flipTime = a[8]; this.airTime = a[9]; this.airTimeSinceJump = a[10];
+    set3(this.flipRelTorque, a[11]);
+    this.handbrakeVal = a[12]; this.boostingTime = a[13]; this.autoFlipTimer = a[14]; this.supersonicTime = a[15]; this.respawnTimer = a[16];
+    this.controls.unpack(a[17]); this.lastControls.unpack(a[18]);
+    const st = this.stats, s = a[19];
+    st.goals = s[0]; st.shots = s[1]; st.saves = s[2]; st.touches = s[3]; st.demos = s[4]; st.boostUsed = s[5]; st.flipResets = s[6];
+    this.lastExtraHitTick = a[20]; this.lastTouchTick = a[21];
+  }
 
   spawn(x, z, yawFwdX, yawFwdZ, boost = CAR.BOOST_SPAWN) {
     this.pos.set(x, CAR.REST_HEIGHT, z);

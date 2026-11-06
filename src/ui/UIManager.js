@@ -6,6 +6,7 @@ import { PAINTS } from '../render/CarModel.js';
 import { CarView } from '../render/CarView.js';
 import { Car } from '../physics/Car.js';
 import { ACTION_LABELS, DEFAULT_BINDINGS } from '../core/Settings.js';
+import { normalizeCode } from '../net/PeerLink.js';
 
 const h = (html) => { const t = document.createElement('template'); t.innerHTML = html.trim(); return t.content.firstElementChild; };
 
@@ -17,7 +18,11 @@ export class UIManager {
     this.selectedMode = 'duel';
     this.settingsTab = 'graphics';
     this.returnTo = 'main';
-    this.show('main');
+    // invitation link: ?join=CODE
+    let join = null;
+    try { join = new URLSearchParams(location.search).get('join'); } catch (e) { /* ignore */ }
+    this.pendingJoin = join ? normalizeCode(join) : null;
+    this.show(this.pendingJoin ? 'online' : 'main');
     this.root.addEventListener('mouseover', (e) => { if (e.target.closest('.btn, .card')) this.game.audio.play('hover'); });
     this.root.addEventListener('click', (e) => { if (e.target.closest('.btn, .card, .swatch, .seg button')) this.game.audio.play('click'); });
   }
@@ -28,7 +33,7 @@ export class UIManager {
     this.clear();
     if (name !== 'garage' && this.game.garage) this.exitGarage();
     this.current = name;
-    const fn = { main: this.mainMenu, play: this.playMenu, garage: this.garageMenu, settings: this.settingsMenu, help: this.helpMenu }[name];
+    const fn = { main: this.mainMenu, play: this.playMenu, online: this.onlineMenu, garage: this.garageMenu, settings: this.settingsMenu, help: this.helpMenu }[name];
     if (fn) fn.call(this);
   }
 
@@ -41,6 +46,7 @@ export class UIManager {
         <div class="logo">ROCKET<span>ARENA</span></div>
         <div class="tagline">Football · Voitures · Fusées</div>
         <button class="btn primary" data-a="play"><span>▶ Jouer</span></button>
+        <button class="btn" data-a="online"><span>Jouer en ligne avec un ami</span></button>
         <button class="btn" data-a="freeplay"><span>Entraînement libre</span></button>
         <button class="btn" data-a="garage"><span>Garage</span></button>
         <button class="btn" data-a="settings"><span>Paramètres</span></button>
@@ -104,6 +110,79 @@ export class UIManager {
       if (card) { this.hideAll(); this.game.startGame(card.dataset.mode, { difficulty: st.difficulty, duration: st.duration }); }
     });
     this.root.appendChild(el);
+  }
+
+  // ------------------------------------------------------------ online
+  onlineMenu() {
+    const g = this.game, st = g.settings.match;
+    const o = this.onlineOpts ||= { teamSize: 1, duration: st.duration, difficulty: st.difficulty };
+    const seg = (k, items) => `<div class="seg" data-k="${k}">${items.map(([v, l]) => `<button data-v="${v}" class="${o[k] == v ? 'on' : ''}">${l}</button>`).join('')}</div>`;
+    const el = h(`<section class="screen">
+      <h2>Jouer en ligne<small>Contre un ami, chacun sur son ordinateur</small></h2>
+      <div class="online-grid">
+        <div class="panel" data-host>
+          <h3>Créer une partie</h3>
+          <div class="field"><label>Format</label>${seg('teamSize', [[1, '1 contre 1'], [2, '2 contre 2'], [3, '3 contre 3']])}</div>
+          <div class="field"><label>Durée</label>${seg('duration', [[120, '2 min'], [300, '5 min'], [600, '10 min']])}</div>
+          <div class="field" data-diff><label>Bots coéquipiers / adversaires (2v2, 3v3)</label>${seg('difficulty', Object.entries(DIFFICULTY).map(([k, d]) => [k, d.label]))}</div>
+          <div class="row"><button class="btn primary small" data-a="create"><span>Créer la partie</span></button></div>
+          <div data-invite></div>
+          <div class="status" data-hstatus></div>
+        </div>
+        <div class="panel" data-join>
+          <h3>Rejoindre une partie</h3>
+          <div class="field"><label>Code donné par ton ami</label><input type="text" class="code-input" maxlength="8" placeholder="ABC123" value="${this.pendingJoin || ''}" data-code></div>
+          <div class="row"><button class="btn primary small" data-a="join"><span>Rejoindre</span></button></div>
+          <div class="status" data-jstatus></div>
+          <p style="color:var(--muted);font-size:15px;margin-top:16px">Ton ami crée la partie et t'envoie le code (ou le lien d'invitation). Vous devez avoir le même jeu ouvert (même lien Netlify).</p>
+        </div>
+      </div>
+      <div class="row" style="margin-top:18px"><button class="btn ghost" data-a="back"><span>Retour</span></button></div>
+    </section>`);
+    const hstatus = el.querySelector('[data-hstatus]'), jstatus = el.querySelector('[data-jstatus]');
+    const setStatus = (node, text, cls = '') => { node.className = 'status ' + cls; node.innerHTML = text; };
+    el.addEventListener('click', async (e) => {
+      const b = e.target.closest('.seg button');
+      if (b) {
+        const k = b.parentElement.dataset.k;
+        o[k] = k === 'difficulty' ? b.dataset.v : +b.dataset.v;
+        b.parentElement.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b));
+        return;
+      }
+      const a = e.target.closest('[data-a]')?.dataset.a;
+      if (a === 'back') { g.online.leave(); this.pendingJoin = null; this.show('main'); }
+      if (a === 'create') {
+        setStatus(hstatus, '<span class="spinner"></span>Création de la partie…');
+        try {
+          const code = await g.online.createGame({ ...o }, (msg) => setStatus(hstatus, msg, 'ok'));
+          if (this.current !== 'online') return;
+          const link = `${location.origin}${location.pathname}?join=${code}`;
+          el.querySelector('[data-invite]').innerHTML = `<div style="margin-top:14px;color:var(--muted);letter-spacing:.15em;font-size:13px">CODE DE LA PARTIE</div>
+            <div class="invite-code">${code}</div>
+            <div class="row"><button class="btn small" data-a="copy"><span>Copier le lien d'invitation</span></button></div>`;
+          el.querySelector('[data-invite]').dataset.link = link;
+          setStatus(hstatus, '<span class="spinner"></span>En attente de ton ami… Garde cette page ouverte.');
+        } catch (err) { setStatus(hstatus, err.message, 'err'); }
+      }
+      if (a === 'copy') {
+        const link = el.querySelector('[data-invite]').dataset.link;
+        try { await navigator.clipboard.writeText(link); setStatus(hstatus, 'Lien copié ! Envoie-le à ton ami. En attente…', 'ok'); }
+        catch (err) { setStatus(hstatus, `Copie impossible, envoie ce lien : ${link}`); }
+      }
+      if (a === 'join') this.doJoin(el, jstatus, setStatus);
+    });
+    el.querySelector('[data-code]').addEventListener('keydown', (e) => { if (e.key === 'Enter') this.doJoin(el, jstatus, setStatus); });
+    this.root.appendChild(el);
+    if (this.pendingJoin) { this.pendingJoin = null; setTimeout(() => this.doJoin(el, jstatus, setStatus), 300); }
+  }
+
+  async doJoin(el, jstatus, setStatus) {
+    const code = normalizeCode(el.querySelector('[data-code]').value);
+    if (code.length < 4) { setStatus(jstatus, 'Entre le code donné par ton ami.', 'err'); return; }
+    setStatus(jstatus, '<span class="spinner"></span>Connexion à la partie…');
+    try {
+      await this.game.online.joinGame(code, (msg) => setStatus(jstatus, msg, 'ok'));
+    } catch (err) { setStatus(jstatus, err.message, 'err'); }
   }
 
   // ------------------------------------------------------------ garage
@@ -351,13 +430,14 @@ export class UIManager {
   showPause() {
     this.clear();
     const free = this.game.session?.mode.freeplay;
+    const online = !!this.game.session?.online;
     const el = h(`<section class="screen center pause-menu">
       <div class="main-menu" style="margin:0">
         <div class="logo" style="font-size:54px">PAUSE</div>
         <button class="btn primary" data-a="resume"><span>Reprendre</span></button>
-        ${free ? '<button class="btn" data-a="reset"><span>Réinitialiser</span></button>' : '<button class="btn" data-a="restart"><span>Recommencer le match</span></button>'}
+        ${online ? '<div style="color:var(--muted);margin:-6px 0 6px 4px">Partie en ligne : le jeu continue pendant la pause.</div>' : (free ? '<button class="btn" data-a="reset"><span>Réinitialiser</span></button>' : '<button class="btn" data-a="restart"><span>Recommencer le match</span></button>')}
         <button class="btn" data-a="settings"><span>Paramètres</span></button>
-        <button class="btn ghost" data-a="quit"><span>Quitter vers le menu</span></button>
+        <button class="btn ghost" data-a="quit"><span>${online ? 'Quitter la partie en ligne' : 'Quitter vers le menu'}</span></button>
       </div>
     </section>`);
     el.addEventListener('click', (e) => {

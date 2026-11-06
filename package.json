@@ -10,12 +10,14 @@
     "preview": "vite preview",
     "test:physics": "node tests/physics.test.mjs",
     "test:bots": "node tests/bots.test.mjs pro 3 120",
-    "test": "node tests/physics.test.mjs && node tests/landing.test.mjs && node tests/smoothness.test.mjs 300 && node tests/bots.test.mjs pro 2 60",
+    "test": "node tests/physics.test.mjs && node tests/landing.test.mjs && node tests/smoothness.test.mjs 300 && node tests/netsync.test.mjs && node tests/bots.test.mjs pro 2 60",
     "test:landing": "node tests/landing.test.mjs",
-    "test:arena": "node tests/smoothness.test.mjs 600"
+    "test:arena": "node tests/smoothness.test.mjs 600",
+    "test:net": "node tests/netsync.test.mjs"
   },
   "dependencies": {
-    "three": "^0.170.0"
+    "three": "^0.170.0",
+    "peerjs": "^1.5.4"
   },
   "devDependencies": {
     "vite": "^5.4.11"

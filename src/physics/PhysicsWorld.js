@@ -109,6 +109,19 @@ export class PhysicsWorld {
     this.events.push({ type: 'respawn', car });
   }
 
+  getState() {
+    return { k: this.tick, t: Math.round(this.time * 1000) / 1000, b: this.ball.getState(), c: this.cars.map((c) => c.getState()),
+      p: this.pads.getState(), lt: this.lastTouch ? this.lastTouch.id : -1 };
+  }
+
+  setState(s) {
+    this.tick = s.k; this.time = s.t;
+    this.ball.setState(s.b);
+    for (const cs of s.c) { const car = this.cars.find((c) => c.id === cs[0]); if (car) car.setState(cs); }
+    this.pads.setState(s.p);
+    this.lastTouch = this.cars.find((c) => c.id === s.lt) || null;
+  }
+
   consumeEvents() {
     const e = this.events;
     this.events = [];

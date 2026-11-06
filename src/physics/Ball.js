@@ -18,6 +18,7 @@ export class Ball {
     this.prevRot = this.rot.clone();
     this.lastWallImpact = 0; // speed of the last arena impact (for audio/fx)
     this.frozen = false;
+    this.renderOffset = new Vec3();
   }
 
   reset(x = 0, y = BALL.RADIUS, z = 0) {
@@ -90,5 +91,19 @@ export class Ball {
 
   serialize() {
     return { p: this.pos.toArray(), v: this.vel.toArray(), w: this.angVel.toArray() };
+  }
+
+  getState() {
+    const r = (v) => Math.round(v * 100) / 100;
+    return [[r(this.pos.x), r(this.pos.y), r(this.pos.z)], [r(this.vel.x), r(this.vel.y), r(this.vel.z)],
+      [r(this.angVel.x * 100) / 100, r(this.angVel.y * 100) / 100, r(this.angVel.z * 100) / 100].map((x) => Math.round(x * 1e4) / 1e4),
+      [this.rot.x, this.rot.y, this.rot.z, this.rot.w].map((x) => Math.round(x * 1e5) / 1e5),
+      (this.frozen ? 1 : 0) | (this.hidden ? 2 : 0)];
+  }
+
+  setState(a) {
+    this.pos.set(a[0][0], a[0][1], a[0][2]); this.vel.set(a[1][0], a[1][1], a[1][2]);
+    this.angVel.set(a[2][0], a[2][1], a[2][2]); this.rot.set(a[3][0], a[3][1], a[3][2], a[3][3]).normalize();
+    this.frozen = !!(a[4] & 1); this.hidden = !!(a[4] & 2);
   }
 }

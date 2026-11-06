@@ -20,6 +20,8 @@ import { BotController, DIFFICULTY } from '../ai/BotController.js';
 import { MatchManager, MODES } from '../modes/MatchManager.js';
 import { loadSettings, saveSettings } from './Settings.js';
 import { LocalAdapter } from '../net/NetworkAdapter.js';
+import { OnlineManager } from '../net/OnlineManager.js';
+import { Controls } from '../physics/Controls.js';
 
 const BOT_NAMES = ['Ziggy', 'Viper', 'Blaze', 'Nova', 'Turbo', 'Kaze', 'Rex', 'Mako', 'Pixel', 'Orion', 'Bandit', 'Echo'];
 const BOT_PAINTS = [
@@ -60,6 +62,8 @@ export class Game {
     this.fps = 60; this.fpsAcc = 0; this.fpsFrames = 0;
     this.garage = null;
 
+    this.online = new OnlineManager(this);
+    this._noInput = new Controls();
     this.ui = new UIClass(this);
     this.hud = new HUDClass(this);
 
@@ -97,13 +101,28 @@ export class Game {
   /** mode: key of MODES; opts: {difficulty, duration, attract} */
   startSession(modeId, opts = {}) {
     this.clearSession();
-    const mode = MODES[modeId];
+    const mode = opts.online
+      ? { id: 'online', label: 'En ligne', teamSize: opts.online.teamSize, opponents: opts.online.teamSize, online: true }
+      : MODES[modeId];
     const world = new PhysicsWorld();
     const scene = this.gfx.scene;
     const session = { mode, world, bots: [], carViews: [], attract: !!opts.attract, player: null, tick: 0, shared: { slices: this.predictor.slices, kickoff: false } };
     let id = 0;
     const diff = opts.difficulty || this.settings.match.difficulty;
-    if (!opts.attract) {
+    if (opts.online) {
+      // cars come from the roster decided by the host (same ids on both machines)
+      for (const r of opts.online.roster) {
+        const car = world.addCar(new Car(r.id, r.team));
+        car.name = r.name;
+        const me = r.id === opts.online.myId;
+        if (me) session.player = car;
+        session.carViews.push(new CarView(scene, car, r.paint || {}, this.particles, me ? {} : { name: r.name.replace(' (bot)', '') }));
+        if (r.bot && opts.online.role === 'host') session.bots.push(new BotController(car, world, session.shared, diff));
+      }
+      // put the local player's view first (camera follows carViews[0])
+      const pi = session.carViews.findIndex((v) => v.car === session.player);
+      if (pi > 0) session.carViews.unshift(session.carViews.splice(pi, 1)[0]);
+    } else if (!opts.attract) {
       const p = world.addCar(new Car(id++, 0));
       p.name = this.settings.player.name || 'Joueur';
       p.infiniteBoost = mode.freeplay && this.settings.match.unlimitedBoostFreeplay;
@@ -118,18 +137,22 @@ export class Game {
       session.carViews.push(new CarView(scene, car, paints[idx % paints.length], this.particles, { name: names[(id - 1) % names.length] }));
       session.bots.push(new BotController(car, world, session.shared, diff));
     };
-    const teamSize = opts.attract ? 2 : mode.teamSize;
-    const mates = opts.attract ? 2 : teamSize - 1;
-    for (let i = 0; i < mates; i++) addBot(0, i);
-    const opp = opts.attract ? 2 : mode.opponents;
-    for (let i = 0; i < opp; i++) addBot(1, i);
+    if (!opts.online) {
+      const teamSize = opts.attract ? 2 : mode.teamSize;
+      const mates = opts.attract ? 2 : teamSize - 1;
+      for (let i = 0; i < mates; i++) addBot(0, i);
+      const opp = opts.attract ? 2 : mode.opponents;
+      for (let i = 0; i < opp; i++) addBot(1, i);
+    }
 
     session.ballView = new BallView(scene, world.ball, this.particles);
     session.padView = new BoostPadView(scene, world.pads);
     session.match = new MatchManager(world, opts.attract ? MODES.doubles : mode, { duration: opts.duration ?? this.settings.match.duration });
     this.session = session;
     this.hookMatch(session);
-    session.match.newKickoffVariant();
+    if (opts.online) this.online.attach(session, opts.online);
+    session.match.kickoffVariant = 0;
+    if (!opts.online) session.match.newKickoffVariant();
     session.match.start();
     this.camCtl.snap();
     this.ballCam = this.settings.camera.ballCamDefault;
@@ -157,6 +180,7 @@ export class Game {
   }
 
   backToMenu() {
+    if (this.online.active) this.online.leave();
     this.hud.hide();
     this.startAttract();
   }
@@ -207,13 +231,16 @@ export class Game {
 
     this.handleMetaInput();
     const s = this.session;
-    if (s && !this.paused) {
+    // online games never pause (the pause menu only disables the local inputs)
+    if (s && (!this.paused || s.online)) {
+      if (s.online) s.online.beforeFrame();
       this.acc += dt;
       let steps = 0;
       while (this.acc >= DT && steps < 12) { this.physicsTick(s); this.acc -= DT; steps++; }
       if (steps >= 12) this.acc = 0;
+      if (s.online) s.online.afterFrame();
     }
-    const alpha = this.paused ? 1 : this.acc / DT;
+    const alpha = this.paused && !(s && s.online) ? 1 : this.acc / DT;
     this.render(dt, alpha);
     this.input.clearEdges();
   }
@@ -277,6 +304,13 @@ export class Game {
 
   physicsTick(s) {
     const w = s.world, m = s.match;
+    if (s.online && s.online.role === 'guest') {
+      // guest: local prediction, the host is authoritative
+      s.tick++;
+      const c = m.state === 'ended' || this.paused ? this._noInput.reset() : this.input.update();
+      for (const e of s.online.step(c)) if (e.type !== 'goal') this.onEvent(e, s);
+      return;
+    }
     s.tick++;
     // player input
     if (s.player) {
@@ -292,8 +326,10 @@ export class Game {
     }
     const preHit = s.tick % 4 === 0 ? this.predictor.goalPrediction(2.5) : s.lastGoalPred;
     s.lastGoalPred = preHit;
+    if (s.online) s.online.beforeStep();
     w.step(DT);
     m.tick(DT);
+    if (s.online) s.online.afterStep();
     for (const e of w.consumeEvents()) this.onEvent(e, s);
   }
 

@@ -25,9 +25,10 @@ export class HUD {
       </div>
       <div class="scoreboard hidden" data-board></div>
       <div data-end></div>
-      <div class="fps hidden" data-fps></div>`;
+      <div class="fps hidden" data-fps></div>
+      <div class="ping hidden" data-ping></div>`;
     const q = (k) => this.el.querySelector(`[data-${k}]`);
-    this.$ = { s0: q('s0'), s1: q('s1'), time: q('time'), feed: q('feed'), notify: q('notify'), count: q('count'), goal: q('goal'), training: q('training'), flip: q('flip'), cam: q('cam'), speed: q('speed'), boost: q('boost'), boostnum: q('boostnum'), board: q('board'), end: q('end'), fps: q('fps') };
+    this.$ = { s0: q('s0'), s1: q('s1'), time: q('time'), feed: q('feed'), notify: q('notify'), count: q('count'), goal: q('goal'), training: q('training'), flip: q('flip'), cam: q('cam'), speed: q('speed'), boost: q('boost'), boostnum: q('boostnum'), board: q('board'), end: q('end'), fps: q('fps'), ping: q('ping') };
     this.$.ring = this.el.querySelector('.boost-meter .fg');
     this.lastBoost = -1; this.lastSpeed = -1; this.boardVisible = false;
   }
@@ -119,10 +120,14 @@ export class HUD {
       <div class="result ${win ? 'win' : ''}">${win ? 'VICTOIRE' : 'DÉFAITE'}</div>
       <div class="final"><span class="b">${d.score[0]}</span> - <span class="o">${d.score[1]}</span></div>
       <div class="panel">${this.statsTable(session)}</div>
-      <div class="row"><button class="btn primary" data-a="again"><span>Rejouer</span></button><button class="btn ghost" data-a="menu"><span>Menu principal</span></button></div>
+      <div class="row">${session.online
+        ? (session.online.role === 'host' ? '<button class="btn primary" data-a="again"><span>Revanche</span></button>' : '<div class="notify" style="animation:none">L\'hôte peut lancer une revanche…</div>')
+        : '<button class="btn primary" data-a="again"><span>Rejouer</span></button>'}<button class="btn ghost" data-a="menu"><span>Menu principal</span></button></div>
     </div>`;
-    this.$.end.querySelector('[data-a="again"]').addEventListener('click', () => {
+    const again = this.$.end.querySelector('[data-a="again"]');
+    if (again) again.addEventListener('click', () => {
       this.$.end.innerHTML = '';
+      if (session.online) { if (this.game.online.active) this.game.online.startMatch(); else { this.game.backToMenu(); this.game.ui.show('main'); } return; }
       this.game.startGame(session.mode.id, { difficulty: this.game.settings.match.difficulty, duration: this.game.settings.match.duration });
     });
     this.$.end.querySelector('[data-a="menu"]').addEventListener('click', () => {
@@ -163,6 +168,16 @@ export class HUD {
     if (this.boardVisible) {
       this._boardAcc = (this._boardAcc || 0) + dt;
       if (this._boardAcc > 0.5) { this._boardAcc = 0; this.$.board.innerHTML = this.statsTable(session); }
+    }
+    this.$.ping.classList.toggle('hidden', !session.online);
+    if (session.online) {
+      this._pingAcc = (this._pingAcc || 0) + dt;
+      if (this._pingAcc > 0.5) {
+        this._pingAcc = 0;
+        const rtt = session.online.link ? Math.round(session.online.link.rtt) : 0;
+        this.$.ping.textContent = `${session.online.role === 'host' ? 'Hôte' : 'Invité'} · ping ${rtt} ms`;
+        this.$.ping.classList.toggle('bad', rtt > 150);
+      }
     }
     const showFps = this.game.settings.graphics.showFps;
     this.$.fps.classList.toggle('hidden', !showFps);
