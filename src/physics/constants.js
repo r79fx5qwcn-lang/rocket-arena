@@ -50,7 +50,7 @@ export const CAR = {
   REST_HEIGHT: 17.01,
   MAX_SPEED: 2300,
   MAX_ANG_SPEED: 5.5,
-  FLIP_MAX_ANG_SPEED: 10,
+  FLIP_MAX_ANG_SPEED: 12.5,
   SUPERSONIC_START: 2200,
   SUPERSONIC_MAINTAIN: 2100,
 
@@ -101,8 +101,9 @@ export const CAR = {
   FLIP_SIDE_SCALE: 1.9,
   FLIP_BACKWARD_SCALE: 2.5,
   FLIP_BACKWARD_X_SCALE: 16 / 15,
-  FLIP_TORQUE_ROLL: 260 * 0.09587 * 4,   // ≈100 rad/s²: a dodge reaches its max spin in ~0.1 s
-  FLIP_TORQUE_PITCH: 224 * 0.09587 * 4,
+  FLIP_TORQUE_ROLL: 260 * 0.09587 * 6,   // ≈150 rad/s²: a dodge reaches its max spin in ~0.08 s
+  FLIP_TORQUE_PITCH: 224 * 0.09587 * 6,
+  FLIP_END_BRAKE: 60, // once the dodge has done its full turn, the remaining spin is braked so the car lands level
 
   // Air control (Chip's measurements, rad/s²)
   AIR_TORQUE: { roll: 36.08, pitch: 12.15, yaw: 8.92 },
@@ -120,8 +121,8 @@ export const CAR = {
   AUTOFLIP_TIME: 0.4,
   AUTOROLL_FORCE: 100,
   AUTOROLL_TORQUE: 80,
-  SELF_RIGHT_TORQUE: 16,  // rad/s² when lying on a side
-  SELF_RIGHT_LIFT: 250,
+  SELF_RIGHT_TORQUE: 32,  // rad/s² when lying on a side
+  SELF_RIGHT_LIFT: 150,
 
   DEMO_RESPAWN_TIME: 3,
   BUMP_COOLDOWN: 0.25,

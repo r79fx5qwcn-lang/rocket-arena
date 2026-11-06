@@ -12,7 +12,9 @@ import { Controls } from '../physics/Controls.js';
 import { Vec3 } from '../physics/math.js';
 
 export const NET_VERSION = 1;
-export const SNAPSHOT_EVERY = 4; // ticks (120 / 4 = 30 snapshots per second)
+export const SNAPSHOT_EVERY = 2; // ticks (120 / 2 = 60 snapshots per second)
+export const INPUT_REDUNDANCY = 12; // every input packet repeats the last 12 inputs (lost packets don't matter)
+const BUFFER_TARGET = 3, BUFFER_HIGH = 7;
 
 export class HostSync {
   constructor(world, link, remoteCar) {
@@ -22,6 +24,7 @@ export class HostSync {
     this.queue = [];
     this.lastQueued = -1;
     this.ack = -1;
+    this.over = 0;
   }
 
   onMessage(msg) {
@@ -33,8 +36,11 @@ export class HostSync {
 
   /** before each host physics step: consume one guest input */
   beforeStep() {
-    // keep the buffer short (catch up if the guest's clock runs a bit fast)
-    if (this.queue.length > 8) this.queue.splice(0, this.queue.length - 3);
+    // adaptive jitter buffer: if inputs pile up (clock drift, burst after a lag spike),
+    // drop at most one extra input per tick until we are back near the target size.
+    if (this.queue.length > BUFFER_HIGH) this.over++; else this.over = 0;
+    if (this.over > 12 && this.queue.length > BUFFER_TARGET) this.queue.shift();
+    if (this.queue.length > 60) this.queue.splice(0, this.queue.length - BUFFER_TARGET);
     const it = this.queue.shift();
     if (it) { this.remote.controls.unpack(it[1]); this.ack = it[0]; }
   }
@@ -42,7 +48,8 @@ export class HostSync {
   /** after each host physics step */
   afterStep(matchState) {
     if (this.world.tick % SNAPSHOT_EVERY !== 0) return;
-    this.link.send({ t: 's', a: this.ack, w: this.world.getState(), m: matchState });
+    // unreliable channel, and skipped if the link is congested (no latency build-up)
+    this.link.sendFast({ t: 's', a: this.ack, w: this.world.getState(), m: matchState });
   }
 }
 
@@ -82,8 +89,10 @@ export class GuestSync {
   /** send the inputs produced since the last call (once per rendered frame) */
   flush() {
     if (!this.pending.length) return;
-    this.link.send({ t: 'in', i: this.pending });
-    this.pending = [];
+    if (this.pending.length > INPUT_REDUNDANCY * 4) this.pending.splice(0, this.pending.length - INPUT_REDUNDANCY * 4);
+    this.link.sendFast({ t: 'in', i: this.pending });
+    // keep the last inputs: they are sent again with the next packets (loss protection)
+    if (this.pending.length > INPUT_REDUNDANCY) this.pending.splice(0, this.pending.length - INPUT_REDUNDANCY);
   }
 
   /** apply the latest host snapshot and re-simulate the inputs not yet acknowledged */
@@ -107,6 +116,7 @@ export class GuestSync {
         w.consumeEvents(); // already heard / seen during the first prediction
       }
       for (const k of this.history.keys()) if (k <= ack) this.history.delete(k);
+      this.pending = this.pending.filter((p) => p[0] > ack);
     }
     // visual smoothing of the correction
     let err = 0;

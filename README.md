@@ -32,7 +32,16 @@ Aucune variable d'environnement ni backend n'est nécessaire. Tout est généré
 3. **Ton ami :** il ouvre le lien (la partie se rejoint toute seule), ou il va dans **Jouer en ligne** et tape le code.
 4. Le match démarre pour vous deux. À la fin, l'hôte peut lancer une **revanche**.
 
-Comment ça marche : la connexion est **directe entre les deux navigateurs** (WebRTC via [PeerJS](https://peerjs.com)). Le service public gratuit de PeerJS sert seulement à mettre les deux joueurs en relation. Il n'y a aucun serveur à installer et ça marche directement sur Netlify. L'hôte fait tourner la simulation officielle. L'invité prédit sa propre voiture pour ne pas sentir le décalage, puis se recale sur l'hôte environ 30 fois par seconde. Le ping s'affiche en bas à gauche.
+Comment ça marche : le jeu (les fichiers) est hébergé sur Netlify, mais la partie elle-même passe **directement d'un navigateur à l'autre** (WebRTC via [PeerJS](https://peerjs.com)). Netlify ne peut pas faire tourner une partie en temps réel : il n'accepte pas de connexion permanente. Et un serveur placé ailleurs ajouterait un détour, donc plus de ping que la liaison directe. Le service gratuit de PeerJS sert seulement à mettre les deux joueurs en relation.
+
+Pour limiter le lag :
+- **Canal non fiable pour le temps réel.** Les positions (60 fois par seconde) et les commandes passent par un canal qui ne renvoie jamais un paquet perdu, comme dans les vrais jeux en ligne. Un paquet perdu ne bloque donc pas les suivants (c'est ce qui créait les gros pics de ping).
+- **Commandes répétées.** Chaque envoi contient les 12 dernières commandes de l'invité : perdre quelques paquets ne change rien.
+- **Tampon adaptatif chez l'hôte.** Il absorbe les variations de ping sans jeter de commandes.
+- **Prédiction locale.** L'invité joue sa voiture sans attendre l'hôte et se recale en douceur.
+- **Pas d'accumulation.** Si la connexion sature, les positions trop anciennes ne sont pas envoyées au lieu de s'empiler.
+
+`npm run test:net` simule 200 ms de ping et 10 % de paquets perdus : l'erreur moyenne de prédiction de la voiture de l'invité reste sous 1 uu.
 
 À savoir :
 - **Garde l'onglet du jeu au premier plan, surtout l'hôte.** Les navigateurs mettent en pause les onglets cachés, donc le jeu se fige pour l'invité.
@@ -110,7 +119,9 @@ Résultats de `npm run test:physics` (extraits) : vitesse max 1410 uu/s ; supers
 - **Dodges** : l'accélération angulaire (environ 100 rad/s²) et la vitesse de rotation pendant le dodge (10 rad/s, contre 5,5 hors dodge) ont été réglées pour qu'un flip fasse un tour complet en environ 0,65 s, comme dans le jeu. Les valeurs exactes de RL ne sont pas publiques.
 - **Plafond** : la sticky force est un peu plus forte au plafond pour pouvoir y rouler en accélérant. En relâchant, on tombe en gardant son flip (ceiling shot).
 - **Flicks** : 100 % physiques. L'impulsion de frappe tient compte de la vitesse de la carrosserie au point de contact, donc une voiture qui tourne pendant un dodge frappe plus fort. Mesuré (`npm run test:landing`) : front flick et flick à 45° autour de +900 à +1100 uu/s, musty jusqu'à +1500 uu/s, toujours avec un atterrissage sur les roues.
-- **Multijoueur en ligne** : pair à pair, à 2 humains maximum (le reste des équipes en bots). Sans serveur dédié, l'hôte a l'avantage du ping 0 et l'invité joue avec une prédiction locale. `npm run test:net` simule le réseau : l'erreur de prédiction de l'invité reste autour de 10 uu en moyenne avec 200 ms de latence.
+- **Multijoueur en ligne** : pair à pair, à 2 humains maximum (le reste des équipes en bots). L'hôte a l'avantage du ping 0. L'invité voit la balle et les autres voitures avec le délai réseau, compensé par la prédiction.
+- **Flips** : le dodge s'arrête après un tour complet et freine la rotation restante, pour que la voiture sorte du flip à plat. Après un flip trop bas qui touche le sol en pleine rotation, la voiture se remet seule sur ses roues.
+- **Caméra pendant les flicks** : la caméra voiture garde son cap pendant un dodge. La Ball Cam ignore la direction de la balle quand elle est juste au-dessus de la voiture (dribble, flick). La rotation de la caméra est plafonnée et les impacts ne la secouent plus.
 - **Replays** : non inclus. La célébration après un but est une explosion avec caméra orbitale.
 
 ## Licence

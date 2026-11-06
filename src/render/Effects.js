@@ -41,7 +41,7 @@ export class Effects {
     const p = new THREE.Vector3(pointUU.x * S, pointUU.y * S, pointUU.z * S);
     const k = Math.min(1, (strength - 600) / 2500);
     this.particles.burst(p.x, p.y, p.z, 20 + 60 * k, 10 + 20 * k, [new THREE.Color(1, 0.85, 0.5), new THREE.Color(1, 1, 1)], 0.35, 0.5, { drag: 2, gravity: 9 });
-    if (k > 0.35) { this.ring(p, 0xffffff, 3 + 6 * k, 0.35, null); this.cam.shake(0.15 + 0.35 * k); }
+    if (k > 0.35) this.ring(p, 0xffffff, 3 + 6 * k, 0.35, null); // no camera shake on hits (keeps flicks / dribbles readable)
   }
 
   demo(pointUU, team) {

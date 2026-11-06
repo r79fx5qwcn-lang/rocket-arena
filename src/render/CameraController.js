@@ -83,13 +83,29 @@ export class CameraController {
 
     // ---- desired viewing direction, in the plane perpendicular to `up`
     this.ballCamBlend += ((ctx.ballCam ? 1 : 0) - this.ballCamBlend) * (1 - Math.exp(-dt * 6));
+    let ballW = 1;
     if (ctx.ballCam) {
       _dir.copy(ballPos).sub(carPos);
+      // ball (almost) right above the car — dribbles, flicks, air dribbles: its horizontal
+      // direction is meaningless, so keep the previous heading instead of spinning around
+      const vert = _dir.dot(up);
+      const horiz = Math.sqrt(Math.max(0, _dir.lengthSq() - vert * vert));
+      ballW = THREE.MathUtils.clamp((horiz - 1.5) / 4.5, 0, 1); // 1.5 m .. 6 m
+      ballW = ballW * ballW * (3 - 2 * ballW);
+      if (ballW < 1 && this.initialized) {
+        _dir.addScaledVector(up, -vert);
+        if (_dir.lengthSq() > 1e-6) _dir.normalize();
+        _dir.multiplyScalar(ballW).addScaledVector(this.dir, 1 - ballW);
+      }
     } else {
       _dir.set(1, 0, 0).applyQuaternion(ctx.carQuat);
-      if (Math.abs(_dir.dot(up)) > 0.9) {
-        // nose along `up` (aerial): use velocity
-        _dir.set(ctx.carVel.x, ctx.carVel.y, ctx.carVel.z);
+      const along = Math.abs(_dir.dot(up));
+      if (ctx.dodging) {
+        // during a flip / flick the nose sweeps through the vertical: keep the view steady
+        _dir.copy(this.dir);
+      } else if (along > 0.75) {
+        // nose pointing up/down (aerial, wall transition): keep the previous heading
+        _dir.copy(this.dir);
       }
     }
     _dir.addScaledVector(up, -_dir.dot(up));
@@ -100,10 +116,12 @@ export class CameraController {
     if (this.dir.lengthSq() < 1e-4 || !this.initialized) this.dir.copy(_dir);
     this.dir.normalize();
     // rotate smoothly toward the target around `up` (handles 180° turns)
-    const rate = THREE.MathUtils.lerp(3.5, 16, st.stiffness);
+    let rate = THREE.MathUtils.lerp(3.5, 16, st.stiffness);
+    if (ctx.airborne && !ctx.ballCam) rate *= 0.5;
     _tmp.crossVectors(this.dir, _dir);
     const ang = Math.atan2(_tmp.dot(up), this.dir.dot(_dir));
-    _q.setFromAxisAngle(up, ang * (1 - Math.exp(-dt * rate)));
+    const maxStep = (ctx.ballCam ? 2.4 : 4.5) * dt; // rad/s cap: no sudden whip-pans
+    _q.setFromAxisAngle(up, THREE.MathUtils.clamp(ang * (1 - Math.exp(-dt * rate)), -maxStep, maxStep));
     this.dir.applyQuaternion(_q).normalize();
 
     // swivel (right stick / mouse)
@@ -146,7 +164,7 @@ export class CameraController {
       elev = THREE.MathUtils.clamp(elev, THREE.MathUtils.degToRad(-25), THREE.MathUtils.degToRad(38));
       _tmp.multiplyScalar(1 / horiz);
       _target.copy(_desired).addScaledVector(_tmp, 10).addScaledVector(up, Math.tan(elev) * 10);
-      _look.lerp(_target, this.ballCamBlend);
+      _look.lerp(_target, this.ballCamBlend * (0.35 + 0.65 * ballW));
     }
 
     const kp = this.initialized ? 1 - Math.exp(-dt * 14) : 1;

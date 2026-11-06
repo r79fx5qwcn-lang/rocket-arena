@@ -70,6 +70,8 @@ export class Car {
     this.hasDoubleJumped = false; this.hasFlipped = false;
     this.isFlipping = false; this.flipTime = 0;
     this.flipRelTorque = new Vec3(); // x = roll, z = pitch (local)
+    this.flipAngle = 0;
+    this.flipStartUp = new Vec3(0, 1, 0);
     this.airTime = 0; this.airTimeSinceJump = 0;
     this.hasFlipDir = false;
     this.autoFlipTimer = 0;
@@ -352,7 +354,7 @@ export class Car {
         const len = _a.length();
         if (len > 1e-3) {
           this.angVel.addScaled(_a, (CAR.SELF_RIGHT_TORQUE / len) * Math.min(1, len * 1.5) * dt);
-          this.vel.addScaled(n, CAR.SELF_RIGHT_LIFT * dt);
+          if (this.vel.dot(n) < 80) this.vel.addScaled(n, CAR.SELF_RIGHT_LIFT * dt);
         }
       }
     }
@@ -474,7 +476,8 @@ export class Car {
 
   startFlip(f, u) {
     const c = this.controls;
-    this.isFlipping = true; this.flipTime = 0; this.hasFlipped = true;
+    this.isFlipping = true; this.flipTime = 0; this.hasFlipped = true; this.flipAngle = 0;
+    this.flipStartUp.copy(u);
     let dx = -c.pitch, dy = c.yaw + c.roll;
     if (Math.abs(dx) < 0.1 && Math.abs(dy) < 0.1) { dx = 0; dy = 0; }
     const len = Math.hypot(dx, dy);
@@ -523,8 +526,21 @@ export class Car {
         if (pitch !== 0 && Math.sign(tPitch) !== Math.sign(pitch)) tPitch *= 1 - Math.min(Math.abs(pitch), 1);
         else pitchScale = 0; // pitch lock during the dodge
       }
-      ax += tRoll * CAR.FLIP_TORQUE_ROLL;
-      az += tPitch * CAR.FLIP_TORQUE_PITCH;
+      // track how far the dodge has rotated around its own axis: once a full turn is
+      // done, the spin is braked so the car comes out of the dodge level (no over-rotation)
+      const fr = this.flipRelTorque, fl = Math.hypot(fr.x, fr.z) || 1;
+      const axR = fr.x / fl, axP = fr.z / fl;
+      const wAxis = wl.x * axR + wl.z * axP;
+      if (wAxis > 0) this.flipAngle += wAxis * dt;
+      // full turn done = rotated more than half a turn AND back to the starting attitude
+      const done = this.flipAngle > Math.PI * 2 - 0.5 || (this.flipAngle > Math.PI && u.dot(this.flipStartUp) > 0.9);
+      if (!done) {
+        ax += tRoll * CAR.FLIP_TORQUE_ROLL;
+        az += tPitch * CAR.FLIP_TORQUE_PITCH;
+      } else if (wAxis > 0) {
+        ax -= axR * wAxis * CAR.FLIP_END_BRAKE;
+        az -= axP * wAxis * CAR.FLIP_END_BRAKE;
+      }
     }
     // player torque
     ax += roll * T.roll;

@@ -52,6 +52,11 @@ export class PeerLink {
           peer.on('open', () => resolve());
           peer.on('error', (e) => { if (!this.code) { peer.destroy(); reject(e); } else this.emit('status', describeError(e)); });
           peer.on('connection', (conn) => {
+            if (conn.label === 'fast') {
+              // unreliable / unordered channel for snapshots and inputs (no lag spikes on packet loss)
+              if (this.conn && conn.peer === this.conn.peer) this.attachFast(conn); else conn.close();
+              return;
+            }
             if (this.conn && this.conn.open) { conn.on('open', () => { conn.send({ t: 'full' }); setTimeout(() => conn.close(), 500); }); return; }
             this.attach(conn);
             conn.on('open', () => onGuestConnected && onGuestConnected());
@@ -79,9 +84,13 @@ export class PeerLink {
       const timer = setTimeout(() => { if (!done) { done = true; reject(new Error('Délai dépassé : l\'hôte ne répond pas.')); } }, 15000);
       peer.on('error', (e) => { if (!done) { done = true; clearTimeout(timer); reject(e); } else this.emit('status', describeError(e)); });
       peer.on('open', () => {
-        const conn = peer.connect(PREFIX + this.code, { reliable: true, serialization: 'json' });
+        const conn = peer.connect(PREFIX + this.code, { label: 'ctrl', reliable: true, serialization: 'json' });
         this.attach(conn);
-        conn.on('open', () => { if (!done) { done = true; clearTimeout(timer); resolve(); } });
+        conn.on('open', () => {
+          if (!done) { done = true; clearTimeout(timer); resolve(); }
+          const fast = peer.connect(PREFIX + this.code, { label: 'fast', reliable: false, serialization: 'json' });
+          this.attachFast(fast);
+        });
       });
     });
   }
@@ -99,7 +108,26 @@ export class PeerLink {
     this.pingTimer = setInterval(() => { if (conn.open) this.send({ t: 'ping', ts: performance.now() }); }, 1000);
   }
 
+  attachFast(conn) {
+    this.fast = conn;
+    conn.on('data', (msg) => { if (msg && typeof msg === 'object') this.emit('message', msg); });
+    conn.on('close', () => { if (this.fast === conn) this.fast = null; });
+    conn.on('error', () => { if (this.fast === conn) this.fast = null; });
+  }
+
   get connected() { return !!(this.conn && this.conn.open); }
+
+  /**
+   * Time-critical messages (snapshots, inputs): unreliable channel. A message is simply
+   * skipped when the channel is congested instead of queuing up and adding latency.
+   */
+  sendFast(msg) {
+    const c = this.fast && this.fast.open ? this.fast : this.conn;
+    if (!c || !c.open) return;
+    const dc = c.dataChannel;
+    if (dc && dc.bufferedAmount > 32 * 1024) { this.skipped = (this.skipped || 0) + 1; return; }
+    try { c.send(msg); } catch (e) { /* channel closing */ }
+  }
 
   send(msg) {
     if (this.conn && this.conn.open) {
@@ -110,6 +138,7 @@ export class PeerLink {
   close() {
     this.closed = true;
     clearInterval(this.pingTimer);
+    try { if (this.fast) this.fast.close(); } catch (e) { /* ignore */ }
     try { if (this.conn) this.conn.close(); } catch (e) { /* ignore */ }
     try { if (this.peer) this.peer.destroy(); } catch (e) { /* ignore */ }
   }
