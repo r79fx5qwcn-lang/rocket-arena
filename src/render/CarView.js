@@ -84,7 +84,7 @@ export class CarView {
       const f = 0.8 + Math.random() * 0.4;
       fl.scale.set(f, 0.9 + Math.random() * 0.2, 0.9 + Math.random() * 0.2);
       this.emitAcc += dt * 140;
-      const nozzle = _v.set(-60 * S, 6 * S, 0).applyQuaternion(root.quaternion).add(root.position);
+      const nozzle = _v.set(this.model.nozzle.x, this.model.nozzle.y, 0).applyQuaternion(root.quaternion).add(root.position);
       _back.set(-1, 0, 0).applyQuaternion(root.quaternion);
       const vx = car.vel.x * S, vy = car.vel.y * S, vz = car.vel.z * S;
       const c = this.boostColor;

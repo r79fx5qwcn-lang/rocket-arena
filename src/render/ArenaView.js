@@ -4,7 +4,8 @@
 import * as THREE from 'three';
 import { ARENA, UU_TO_M as S } from '../physics/constants.js';
 import { floorFilletRadius } from '../physics/Arena.js';
-import { makeFieldTexture, makeWallTexture, makeNetTexture } from './textures.js';
+import { makeFieldTexture, makeWallTexture, makeNetTexture, makeTextSprite } from './textures.js';
+import { THEMES } from './themes.js';
 
 const { HALF_W: W, HALF_L: L, HEIGHT: H, CORNER_R: RC, FILLET_R: RF, GOAL_HALF_W: GW, GOAL_H: GH, GOAL_DEPTH: GD } = ARENA;
 const RCG = ARENA.GOAL_CORNER_R;
@@ -160,16 +161,30 @@ function quad(x0, y0, z0, x1, y1, z1, x2, y2, z2, x3, y3, z3, uvScale = [1, 1]) 
   return g;
 }
 
+function makeCurtainTexture() {
+  const c = document.createElement('canvas'); c.width = 32; c.height = 128;
+  const g = c.getContext('2d');
+  const grd = g.createLinearGradient(0, 0, 0, 128);
+  grd.addColorStop(0, 'rgba(255,255,255,0.0)'); grd.addColorStop(0.5, 'rgba(255,255,255,0.9)'); grd.addColorStop(1, 'rgba(255,255,255,0.0)');
+  g.fillStyle = 'rgba(255,255,255,0.25)'; g.fillRect(0, 0, 32, 128);
+  g.fillStyle = grd; g.fillRect(0, 0, 32, 40);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
 export class ArenaView {
-  constructor(scene, renderer) {
+  constructor(scene, renderer, theme = THEMES.night) {
     this.group = new THREE.Group();
+    this.scene = scene;
+    this.theme = theme;
     scene.add(this.group);
     const maxAniso = renderer.capabilities.getMaxAnisotropy();
     const path = boundaryPath();
     const upperPath = arenaPath();
 
     // ---- floor (field + goal floors)
-    const fieldTex = makeFieldTexture(maxAniso);
+    const fieldTex = makeFieldTexture(maxAniso, theme);
     const floorMat = new THREE.MeshStandardMaterial({ map: fieldTex, roughness: 0.92, metalness: 0.0, side: THREE.DoubleSide });
     const floor = new THREE.Mesh(floorGeometry(path, (p) => floorFilletRadius(Math.abs(p.x))), floorMat);
     floor.receiveShadow = true;
@@ -177,7 +192,7 @@ export class ArenaView {
 
     // ---- curved floor/wall transitions (opaque, turf-like) + glowing team line
     const rampGeoPlain = sweep(path, ARC_N + 1, rampProfile, { colors: false });
-    const rampMat = new THREE.MeshStandardMaterial({ color: 0x2a4a3a, roughness: 0.8, metalness: 0.1, side: THREE.DoubleSide });
+    const rampMat = new THREE.MeshStandardMaterial({ color: theme.ramp, roughness: 0.8, metalness: 0.1, side: THREE.DoubleSide });
     const ramp = new THREE.Mesh(rampGeoPlain, rampMat);
     ramp.receiveShadow = true;
     this.group.add(ramp);
@@ -187,8 +202,8 @@ export class ArenaView {
 
     // ---- walls (translucent glass + glowing panels)
     const wallTex = makeWallTexture();
-    const glassMat = new THREE.MeshBasicMaterial({ color: 0x0a1630, transparent: true, opacity: 0.28, depthWrite: false, side: THREE.DoubleSide });
-    const panelMat = new THREE.MeshBasicMaterial({ map: wallTex, vertexColors: true, transparent: true, opacity: 0.55, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending });
+    const glassMat = new THREE.MeshBasicMaterial({ color: theme.glass, transparent: true, opacity: theme.glassOpacity, depthWrite: false, side: THREE.DoubleSide });
+    const panelMat = new THREE.MeshBasicMaterial({ map: wallTex, vertexColors: true, transparent: true, opacity: theme.panelOpacity, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending });
     for (const geo of [sweep(path, WALL_N + 1, lowerWallProfile), sweep(upperPath, UPPER_WALL_N + ARC_N + 1, upperProfile)]) {
       const glass = new THREE.Mesh(geo, glassMat);
       const panels = new THREE.Mesh(geo, panelMat);
@@ -201,7 +216,7 @@ export class ArenaView {
     ceilTex.repeat.set(16, 20);
     const ceilGeo = floorGeometry(upperPath, () => RF);
     ceilGeo.translate(0, H * S, 0);
-    const ceiling = new THREE.Mesh(ceilGeo, new THREE.MeshBasicMaterial({ map: ceilTex, color: 0x6688ff, transparent: true, opacity: 0.16, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending }));
+    const ceiling = new THREE.Mesh(ceilGeo, new THREE.MeshBasicMaterial({ map: ceilTex, color: theme.ceiling, transparent: true, opacity: 0.16, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending }));
     ceiling.renderOrder = 3;
     this.group.add(ceiling);
 
@@ -228,6 +243,23 @@ export class ArenaView {
     }
     g.add(new THREE.Mesh(quad(-GW, GH, zL, GW, GH, zL, GW, GH, z1, -GW, GH, z1, nScale(2 * GW, GD)), netMat));
 
+    // ---- make each goal's team obvious (avoid own goals)
+    // light curtain in the goal mouth
+    const curtainMat = new THREE.MeshBasicMaterial({ map: makeCurtainTexture(), color, transparent: true, opacity: 0.32, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending });
+    curtainMat.map.wrapT = THREE.RepeatWrapping;
+    const curtain = new THREE.Mesh(quad(-GW, 0, zL + side * 4, GW, 0, zL + side * 4, GW, GH, zL + side * 4, -GW, GH, zL + side * 4, [1, 2]), curtainMat);
+    curtain.renderOrder = 4;
+    g.add(curtain);
+    // team-coloured goal floor + strong back glow
+    const floorTint = new THREE.Mesh(quad(-GW, 1.5, zL, GW, 1.5, zL, GW, 1.5, z1, -GW, 1.5, z1), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.35, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending }));
+    g.add(floorTint);
+    const backPanel = new THREE.Mesh(quad(-GW, rg, z1 - side * 3, GW, rg, z1 - side * 3, GW, GH, z1 - side * 3, -GW, GH, z1 - side * 3), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.45, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending }));
+    g.add(backPanel);
+    // big team label floating above the goal (text updated by setPlayerTeam)
+    const label = new THREE.Group();
+    label.position.set(0, (GH + 380) * S, zL * S);
+    g.add(label);
+
     // glowing frame: rounded posts + crossbar
     const frameMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: color, emissiveIntensity: 2.2, roughness: 0.3, metalness: 0.6 });
     const postR = 22;
@@ -250,8 +282,24 @@ export class ArenaView {
     light.position.set(0, GH * S * 0.6, (zL + side * GD * 0.5) * S);
     g.add(light);
     this.group.add(g);
-    return { group: g, light, frameMat, color, side };
+    return { group: g, light, frameMat, color, side, curtainMat, label };
   }
+
+  /** labels: the goal the local player defends / attacks */
+  setPlayerTeam(team, freeplay = false) {
+    for (const goal of this.goals) {
+      goal.label.clear();
+      const mine = (goal.side < 0 ? 0 : 1) === team;
+      const txt = freeplay ? (goal.side < 0 ? 'BUT BLEU' : 'BUT ORANGE') : (mine ? 'TON BUT · DÉFENDS' : 'BUT ADVERSE · ATTAQUE');
+      const sp = makeTextSprite(txt, goal.side < 0 ? '#9fd0ff' : '#ffd0a0', goal.side < 0 ? 'rgba(10,40,120,0.75)' : 'rgba(120,50,0,0.75)');
+      sp.scale.set(24, 3, 1);
+      sp.material.depthTest = false;
+      sp.renderOrder = 20;
+      goal.label.add(sp);
+    }
+  }
+
+  dispose() { this.scene.remove(this.group); }
 
   flashGoal(side) {
     const goal = this.goals.find((gg) => gg.side === side);
@@ -260,6 +308,7 @@ export class ArenaView {
 
   update(dt) {
     for (const g of this.goals) {
+      if (g.curtainMat.map) g.curtainMat.map.offset.y -= dt * 0.35;
       if (g.flash > 0) {
         g.flash = Math.max(0, g.flash - dt * 0.5);
         g.light.intensity = g.flash * 400;

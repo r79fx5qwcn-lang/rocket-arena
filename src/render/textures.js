@@ -18,7 +18,9 @@ function finish(c, { repeat = false, srgb = true, aniso = 8 } = {}) {
 }
 
 /** Football pitch: mowing stripes, field lines, team tinted halves. u = x, v = z. */
-export function makeFieldTexture(maxAniso = 8) {
+export function makeFieldTexture(maxAniso = 8, theme = null) {
+  const grassA = theme ? theme.grass[0] : '#2f7d32', grassB = theme ? theme.grass[1] : '#378c3a';
+  const lineCol = theme ? theme.lines : 'rgba(255,255,255,0.85)';
   const W = 1024, H = 1280;
   const [c, g] = canvas(W, H);
   const sx = W / (ARENA.HALF_W * 2), sz = H / (ARENA.HALF_L * 2);
@@ -27,7 +29,7 @@ export function makeFieldTexture(maxAniso = 8) {
   // stripes
   const stripes = 16;
   for (let i = 0; i < stripes; i++) {
-    g.fillStyle = i % 2 ? '#2f7d32' : '#378c3a';
+    g.fillStyle = i % 2 ? grassA : grassB;
     g.fillRect(0, (i * H) / stripes, W, H / stripes + 1);
   }
   // subtle noise
@@ -39,13 +41,15 @@ export function makeFieldTexture(maxAniso = 8) {
   g.putImageData(img, 0, 0);
   // team tint
   let grd = g.createLinearGradient(0, 0, 0, H);
-  grd.addColorStop(0, 'rgba(40,110,255,0.20)');
-  grd.addColorStop(0.42, 'rgba(40,110,255,0.0)');
-  grd.addColorStop(0.58, 'rgba(255,130,20,0.0)');
-  grd.addColorStop(1, 'rgba(255,130,20,0.22)');
+  grd.addColorStop(0, 'rgba(40,110,255,0.42)');
+  grd.addColorStop(0.18, 'rgba(40,110,255,0.22)');
+  grd.addColorStop(0.45, 'rgba(40,110,255,0.0)');
+  grd.addColorStop(0.55, 'rgba(255,130,20,0.0)');
+  grd.addColorStop(0.82, 'rgba(255,130,20,0.24)');
+  grd.addColorStop(1, 'rgba(255,130,20,0.45)');
   g.fillStyle = grd; g.fillRect(0, 0, W, H);
 
-  g.strokeStyle = 'rgba(255,255,255,0.85)';
+  g.strokeStyle = lineCol;
   g.lineWidth = 6;
   // outline (rounded rect inset)
   const inset = 250;
@@ -60,6 +64,8 @@ export function makeFieldTexture(maxAniso = 8) {
   for (const s of [-1, 1]) {
     const zLine = s * (ARENA.HALF_L - inset);
     const boxW = 2000, boxD = 1100, bigW = 3000, bigD = 2000;
+    g.fillStyle = s < 0 ? 'rgba(40,110,255,0.30)' : 'rgba(255,130,20,0.30)';
+    g.fillRect(X(-boxW / 2), Math.min(Z(zLine), Z(zLine - s * boxD)), boxW * sx, boxD * sz);
     g.strokeRect(X(-boxW / 2), Math.min(Z(zLine), Z(zLine - s * boxD)), boxW * sx, boxD * sz);
     g.strokeRect(X(-bigW / 2), Math.min(Z(zLine), Z(zLine - s * bigD)), bigW * sx, bigD * sz);
     g.beginPath(); g.arc(X(0), Z(zLine - s * bigD), 600 * sx, s > 0 ? Math.PI : 0, s > 0 ? Math.PI * 2 : Math.PI); g.stroke();
@@ -141,27 +147,31 @@ export function makeShadowTexture() {
 }
 
 export function makeTextSprite(text, color = '#ffffff', bg = 'rgba(0,0,0,0.45)') {
-  const [c, g] = canvas(512, 128);
-  g.font = 'bold 64px Rajdhani, Arial, sans-serif';
-  const w = Math.min(500, g.measureText(text).width + 50);
+  const [c, g] = canvas(1024, 128);
+  let size = 64;
+  g.font = `bold ${size}px Rajdhani, Arial, sans-serif`;
+  while (g.measureText(text).width > 940 && size > 20) { size -= 4; g.font = `bold ${size}px Rajdhani, Arial, sans-serif`; }
+  const w = Math.min(1000, g.measureText(text).width + 60);
   g.fillStyle = bg;
-  g.beginPath(); g.roundRect ? g.roundRect((512 - w) / 2, 14, w, 100, 20) : g.rect((512 - w) / 2, 14, w, 100); g.fill();
+  g.beginPath(); if (g.roundRect) g.roundRect((1024 - w) / 2, 14, w, 100, 22); else g.rect((1024 - w) / 2, 14, w, 100); g.fill();
   g.fillStyle = color; g.textAlign = 'center'; g.textBaseline = 'middle';
-  g.fillText(text, 256, 66);
+  g.fillText(text, 512, 66);
   const tex = finish(c);
   const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, depthTest: true });
   const sp = new THREE.Sprite(mat);
-  sp.scale.set(2.4, 0.6, 1);
+  sp.scale.set(4.8, 0.6, 1);
+  sp.userData.aspect = 8;
   return sp;
 }
 
-export function makeSkyTexture() {
+export function makeSkyTexture(theme = null) {
+  const c4 = theme ? theme.sky : ['#05060f', '#151a3a', '#2b2350', '#0b0c18'];
   const [c, g] = canvas(16, 512);
   const grd = g.createLinearGradient(0, 0, 0, 512);
-  grd.addColorStop(0, '#05060f');
-  grd.addColorStop(0.45, '#151a3a');
-  grd.addColorStop(0.7, '#2b2350');
-  grd.addColorStop(1, '#0b0c18');
+  grd.addColorStop(0, c4[0]);
+  grd.addColorStop(0.45, c4[1]);
+  grd.addColorStop(0.7, c4[2]);
+  grd.addColorStop(1, c4[3]);
   g.fillStyle = grd; g.fillRect(0, 0, 16, 512);
   return finish(c);
 }

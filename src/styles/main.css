@@ -194,3 +194,14 @@ input.code-input { font-family: var(--display); font-size: 30px; letter-spacing:
   .speedo { right: calc(3vw + 130px); }
   .training-help { display: none; }
 }
+
+.replay-tag { position: absolute; top: 90px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 26px; background: rgba(8,12,26,.82); border-bottom: 3px solid #ff3355; }
+.replay-tag b { font-family: var(--display); font-size: 30px; letter-spacing: .2em; color: #ff5a6e; animation: blink 1s infinite; }
+.replay-tag span { font-size: 14px; letter-spacing: .15em; color: var(--muted); text-transform: uppercase; }
+#hud.in-replay .boost-meter, #hud.in-replay .speedo, #hud.in-replay .camtag, #hud.in-replay .flipstate { opacity: 0; }
+.car-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.car-card { pointer-events: auto; cursor: pointer; padding: 10px; background: rgba(255,255,255,.04); border: 1px solid var(--line); border-top: 3px solid var(--blue); }
+.car-card b { font-family: var(--display); font-style: italic; font-size: 19px; display: block; }
+.car-card span { font-size: 13px; color: var(--muted); display: block; }
+.car-card small { font-size: 12px; color: var(--blue-2); }
+.car-card.on { border-color: var(--orange); border-top-color: var(--orange); background: rgba(255,122,26,.14); }

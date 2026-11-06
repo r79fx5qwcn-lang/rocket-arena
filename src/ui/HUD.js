@@ -26,9 +26,10 @@ export class HUD {
       <div class="scoreboard hidden" data-board></div>
       <div data-end></div>
       <div class="fps hidden" data-fps></div>
-      <div class="ping hidden" data-ping></div>`;
+      <div class="ping hidden" data-ping></div>
+      <div class="replay-tag hidden" data-replay><b>● REPLAY</b><span>Saut / Boost : passer</span></div>`;
     const q = (k) => this.el.querySelector(`[data-${k}]`);
-    this.$ = { s0: q('s0'), s1: q('s1'), time: q('time'), feed: q('feed'), notify: q('notify'), count: q('count'), goal: q('goal'), training: q('training'), flip: q('flip'), cam: q('cam'), speed: q('speed'), boost: q('boost'), boostnum: q('boostnum'), board: q('board'), end: q('end'), fps: q('fps'), ping: q('ping') };
+    this.$ = { s0: q('s0'), s1: q('s1'), time: q('time'), feed: q('feed'), notify: q('notify'), count: q('count'), goal: q('goal'), training: q('training'), flip: q('flip'), cam: q('cam'), speed: q('speed'), boost: q('boost'), boostnum: q('boostnum'), board: q('board'), end: q('end'), fps: q('fps'), ping: q('ping'), replay: q('replay') };
     this.$.ring = this.el.querySelector('.boost-meter .fg');
     this.lastBoost = -1; this.lastSpeed = -1; this.boardVisible = false;
   }
@@ -49,6 +50,12 @@ export class HUD {
     this.ballCam(this.game.ballCam);
     this.$.time.textContent = MatchManager.formatTime(session.match.duration);
     this.$.time.classList.remove('ot', 'low');
+  }
+
+  replay(on) {
+    if (!this.$) return;
+    this.$.replay.classList.toggle('hidden', !on);
+    this.el.classList.toggle('in-replay', on);
   }
 
   score(s) { this.$.s0.textContent = s[0]; this.$.s1.textContent = s[1]; }

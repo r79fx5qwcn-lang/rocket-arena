@@ -4,7 +4,7 @@
 import { DT, CAR, RESPAWN_SPOTS, BALL } from './constants.js';
 import { Ball } from './Ball.js';
 import { BoostPads } from './BoostPads.js';
-import { collideCarArena, collideCarBall, collideCars } from './collisions.js';
+import { collideCarArena, collideCarBall, collideCars, dribbleAssist } from './collisions.js';
 import { isInGoal } from './Arena.js';
 import { Vec3 } from './math.js';
 
@@ -21,6 +21,7 @@ export class PhysicsWorld {
     this.goalDetection = true;
     this.lastTouch = null;
     this.ballTouchTick = -10;
+    this.dribbleAssist = 0; // 0..1, see collisions.dribbleAssist
   }
 
   addCar(car) { this.cars.push(car); return car; }
@@ -57,6 +58,7 @@ export class PhysicsWorld {
         }
       }
     }
+    if (this.dribbleAssist > 0) for (const car of cars) dribbleAssist(car, ball, dt, this.dribbleAssist);
     for (let i = 0; i < cars.length; i++) {
       for (let j = i + 1; j < cars.length; j++) {
         const r = collideCars(cars[i], cars[j], this.time);
@@ -99,6 +101,23 @@ export class PhysicsWorld {
         this.goalDetection = false;
         ev.push({ type: 'goal', scoringTeam: g > 0 ? 0 : 1, lastTouch: this.lastTouch, pos: ball.pos.clone(), speed: ball.vel.length() });
       }
+    }
+  }
+
+  /** goal explosion: blows the nearby cars away and up, like in the original game */
+  goalBlast(pos) {
+    for (const car of this.cars) {
+      if (car.demolished) continue;
+      const dx = car.pos.x - pos.x, dy = car.pos.y - pos.y, dz = car.pos.z - pos.z;
+      const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+      const R = 2600;
+      if (d > R) continue;
+      const k = 1 - d / R;
+      const inv = 1 / Math.max(d, 1);
+      car.vel.x += dx * inv * 2100 * k; car.vel.z += dz * inv * 2100 * k;
+      car.vel.y += 900 * k + Math.max(0, dy * inv) * 900 * k;
+      car.angVel.x += (Math.random() - 0.5) * 9 * k; car.angVel.y += (Math.random() - 0.5) * 6 * k; car.angVel.z += (Math.random() - 0.5) * 9 * k;
+      car.frozen = false;
     }
   }
 

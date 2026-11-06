@@ -5,7 +5,7 @@
 // from these rules + player input, exactly like in the original game.
 import { Vec3, Quat, clamp, lerp } from './math.js';
 import {
-  CAR, GRAVITY, DRIVE_ACCEL_CURVE, STEER_ANGLE_CURVE, POWERSLIDE_STEER_CURVE,
+  CAR, GRAVITY, getPreset, DRIVE_ACCEL_CURVE, STEER_ANGLE_CURVE, POWERSLIDE_STEER_CURVE,
   LAT_FRICTION_CURVE, HANDBRAKE_LAT_FACTOR, NON_STICKY_FRICTION_CURVE,
 } from './constants.js';
 import { arenaRaycast } from './Arena.js';
@@ -32,9 +32,10 @@ function raySphere(o, dir, c, R, maxDist) {
 }
 
 export class Car {
-  constructor(id, team = 0) {
+  constructor(id, team = 0, model = 'Vortex') {
     this.id = id;
     this.team = team; // 0 blue, 1 orange
+    this.setModel(model);
     this.pos = new Vec3(0, CAR.REST_HEIGHT, 0);
     this.vel = new Vec3();
     this.angVel = new Vec3();
@@ -42,12 +43,11 @@ export class Car {
     this.prevPos = this.pos.clone();
     this.prevRot = this.rot.clone();
     this.invMass = 1 / CAR.MASS;
-    this.invI = { x: 1 / CAR.INERTIA.x, y: 1 / CAR.INERTIA.y, z: 1 / CAR.INERTIA.z };
 
     this.controls = new Controls();
     this.lastControls = new Controls();
 
-    this.wheels = CAR.WHEELS.map((w) => ({
+    this.wheels = this.preset.WHEELS.map((w) => ({
       def: w,
       contact: false, onBall: false,
       length: CAR.SUSP_REST, // current suspension length (visual)
@@ -91,6 +91,17 @@ export class Car {
     this.stats = { goals: 0, shots: 0, saves: 0, touches: 0, demos: 0, boostUsed: 0, flipResets: 0 };
     this.name = 'Car';
     this.isBot = false;
+  }
+
+  /** body type: changes the hitbox, wheel layout and inertia */
+  setModel(model) {
+    const p = getPreset(model);
+    this.preset = p;
+    this.model = p.name;
+    this.hb = p.HITBOX_HALF;
+    this.ho = p.HITBOX_OFFSET;
+    this.invI = { x: 1 / p.INERTIA.x, y: 1 / p.INERTIA.y, z: 1 / p.INERTIA.z };
+    if (this.wheels) this.wheels.forEach((w, i) => { w.def = p.WHEELS[i]; });
   }
 
   // ---------- helpers ----------

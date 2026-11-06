@@ -25,6 +25,21 @@ Node 18 ou plus récent (Netlify est configuré sur Node 20).
 
 Aucune variable d'environnement ni backend n'est nécessaire. Tout est généré dans le navigateur : textures, modèles 3D et sons. Aucun fichier média n'est à télécharger.
 
+## Contenu du jeu
+
+- **3 voitures, chacune avec sa propre hitbox** (Garage) :
+  - **Vortex** : polyvalente, hitbox hybride (118 × 84 × 36 uu) ;
+  - **Sabre** : longue et plate, type « plank » (128 × 83 × 31 uu) ;
+  - **Bulldog** : carrée et large (120 × 86 × 39 uu).
+
+  Chaque voiture a aussi ses propres roues, suspensions et inertie. Les designs sont originaux, inspirés de ces catégories.
+- **7 explosions de but** (Garage) : Classique, Feu d'artifice, Tornade, Pixels, Foudre, Confettis, Trou noir. C'est l'explosion du buteur qui se déclenche.
+- **But marqué** : l'explosion projette les voitures proches en l'air et vers l'arrière. Puis le **replay** du but se lance (Saut ou Boost pour passer, désactivable dans Paramètres → Jeu).
+- **7 arènes à thème**, choisies au hasard ou dans « Jouer » : Stade Nocturne, Coucher de Soleil, Néo Métropole (pluie), Toundra Gelée (neige), Désert Rouge (poussière), Forêt d'Automne (feuilles), Plein Jour. Seul le décor change, le terrain est identique.
+- **Buts bien identifiés** : rideau lumineux et intérieur aux couleurs de l'équipe, surface de réparation teintée, et un panneau au-dessus de chaque but (« TON BUT · DÉFENDS » / « BUT ADVERSE · ATTAQUE »).
+- **Aide au dribble** (Paramètres → Jeu, 70 % par défaut) : garde la balle centrée sur le toit quand tu roules. Elle est désactivée en l'air, donc les flicks restent 100 % physiques.
+- **Plafond un peu plus bas** : 1900 uu au lieu de 2044.
+
 ## Jouer en ligne avec un ami
 
 1. **Toi :** menu **Jouer en ligne avec un ami**, puis choisis le format (1v1, 2v2 ou 3v3 ; des bots complètent les équipes) et clique sur **Créer la partie**.
@@ -57,7 +72,8 @@ Pour limiter le lag :
 | Espace (ou clic droit) | Sauter (maintenir = plus haut). 2ᵉ appui : double saut, ou flip si une direction est tenue |
 | Maj gauche (ou clic gauche) | Boost |
 | Maj droite | Powerslide. En l'air : air roll libre |
-| A / E | Air roll gauche / droite |
+| A / E | Tonneau aérien (air roll) gauche / droite |
+| Ctrl gauche ou X (maintenu) + Q/D | Tonneau aérien libre, comme dans RL |
 | C | Ball Cam on/off |
 | Flèches | Commandes alternatives (conduite + aérien) |
 | Tab | Tableau des scores |

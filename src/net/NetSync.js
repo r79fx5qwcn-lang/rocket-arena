@@ -11,7 +11,7 @@
 import { Controls } from '../physics/Controls.js';
 import { Vec3 } from '../physics/math.js';
 
-export const NET_VERSION = 1;
+export const NET_VERSION = 2;
 export const SNAPSHOT_EVERY = 2; // ticks (120 / 2 = 60 snapshots per second)
 export const INPUT_REDUNDANCY = 12; // every input packet repeats the last 12 inputs (lost packets don't matter)
 const BUFFER_TARGET = 3, BUFFER_HIGH = 7;

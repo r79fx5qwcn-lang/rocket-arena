@@ -7,6 +7,10 @@ import { CarView } from '../render/CarView.js';
 import { Car } from '../physics/Car.js';
 import { ACTION_LABELS, DEFAULT_BINDINGS } from '../core/Settings.js';
 import { normalizeCode } from '../net/PeerLink.js';
+import { designInfo } from '../render/carDesigns.js';
+import { getPreset } from '../physics/constants.js';
+import { EXPLOSIONS } from '../render/Effects.js';
+import { THEMES } from '../render/themes.js';
 
 const h = (html) => { const t = document.createElement('template'); t.innerHTML = html.trim(); return t.content.firstElementChild; };
 
@@ -16,7 +20,7 @@ export class UIManager {
     this.root = document.getElementById('ui');
     this.current = null;
     this.selectedMode = 'duel';
-    this.settingsTab = 'graphics';
+    this.settingsTab = 'gameplay';
     this.returnTo = 'main';
     // invitation link: ?join=CODE
     let join = null;
@@ -82,6 +86,7 @@ export class UIManager {
       <div class="row">
         <div class="field"><label>Difficulté des bots</label>
           <div class="seg" data-k="difficulty">${Object.entries(DIFFICULTY).map(([k, d]) => `<button data-v="${k}" class="${st.difficulty === k ? 'on' : ''}">${d.label}</button>`).join('')}</div></div>
+        <div class="field"><label>Arène</label><select data-theme><option value="random" ${st.theme === 'random' ? 'selected' : ''}>Aléatoire</option>${Object.entries(THEMES).map(([k, t]) => `<option value="${k}" ${st.theme === k ? 'selected' : ''}>${t.name}</option>`).join('')}</select></div>
         <div class="field"><label>Durée du match</label>
           <div class="seg" data-k="duration">${[[120, '2 min'], [300, '5 min'], [600, '10 min']].map(([v, l]) => `<button data-v="${v}" class="${st.duration === v ? 'on' : ''}">${l}</button>`).join('')}</div></div>
       </div>
@@ -105,6 +110,7 @@ export class UIManager {
       if (a === 'back') this.show('main');
       if (a === 'go') { this.hideAll(); this.game.startGame(this.selectedMode, { difficulty: st.difficulty, duration: st.duration }); }
     });
+    el.querySelector('[data-theme]').addEventListener('change', (e) => { st.theme = e.target.value; this.game.saveSettings(); });
     el.addEventListener('dblclick', (e) => {
       const card = e.target.closest('.card');
       if (card) { this.hideAll(); this.game.startGame(card.dataset.mode, { difficulty: st.difficulty, duration: st.duration }); }
@@ -190,12 +196,13 @@ export class UIManager {
     const g = this.game;
     g.clearSession();
     g.state = 'garage';
-    const car = new Car(99, 0);
+    const car = new Car(99, 0, g.settings.car.style);
     car.spawn(0, 0, 1, -0.35, 100);
     car.frozen = true;
     const garage = { car, view: null, t: 0 };
     garage.rebuild = () => {
       if (garage.view) garage.view.dispose();
+      car.setModel(g.settings.car.style);
       garage.view = new CarView(g.gfx.scene, car, g.settings.car, g.particles);
     };
     garage.update = (dt) => {
@@ -208,6 +215,12 @@ export class UIManager {
     g.garage = garage;
     g.camCtl.setOrbit(new THREE.Vector3(0, 0.35, 0), 4.0, 1.1, 0.3);
     g.camCtl.pos.set(3, 2, 3);
+  }
+
+  testExplosion() {
+    const g = this.game;
+    g.effects.goal({ x: -260, y: 160, z: 0 }, 0, 3500, g.settings.car.explosion || 'classic');
+    g.audio.play('goal');
   }
 
   exitGarage() {
@@ -229,11 +242,16 @@ export class UIManager {
       <h2>Garage<small>Personnalise ta voiture</small></h2>
       <div class="garage panel">
         <div class="field"><label>Pseudo</label><input type="text" maxlength="16" value="${this.game.settings.player.name}" data-name></div>
-        <div class="field"><label>Carrosserie</label><div class="seg" data-k="style">${PAINTS.styles.map((s) => `<button data-v="${s}" class="${c.style === s ? 'on' : ''}">${s}</button>`).join('')}</div></div>
+        <div class="field"><label>Voiture (chaque voiture a sa propre hitbox)</label><div class="car-cards">${PAINTS.styles.map((st) => {
+          const d = designInfo(st), hb = getPreset(st).HITBOX_HALF;
+          return `<div class="car-card ${c.style === st ? 'on' : ''}" data-car="${st}"><b>${d.label}</b><span>${d.tagline}</span><small>${Math.round(hb.x * 2)} × ${Math.round(hb.z * 2)} × ${Math.round(hb.y * 2)}</small></div>`;
+        }).join('')}</div></div>
         <div class="field"><label>Peinture</label>${sw('body', PAINTS.body)}</div>
         <div class="field"><label>Accents &amp; aileron</label>${sw('accent', PAINTS.accent)}</div>
         <div class="field"><label>Jantes</label>${sw('wheels', PAINTS.wheels)}</div>
         <div class="field"><label>Couleur du boost</label>${sw('boost', PAINTS.boost)}</div>
+        <div class="field"><label>Explosion de but</label><div class="seg" data-k="explosion" style="flex-wrap:wrap">${Object.entries(EXPLOSIONS).map(([k, l]) => `<button data-v="${k}" class="${(c.explosion || 'classic') === k ? 'on' : ''}">${l}</button>`).join('')}</div>
+          <div class="row" style="margin-top:6px"><button class="btn small ghost" data-a="testboom"><span>Tester l'explosion</span></button></div></div>
         <div class="row"><button class="btn primary small" data-a="back"><span>Valider</span></button></div>
       </div>
     </section>`);
@@ -247,8 +265,16 @@ export class UIManager {
         apply();
         return;
       }
+      const card = e.target.closest('.car-card');
+      if (card) { c.style = card.dataset.car; el.querySelectorAll('.car-card').forEach((x) => x.classList.toggle('on', x === card)); apply(); return; }
       const b = e.target.closest('.seg button');
-      if (b) { c.style = b.dataset.v; b.parentElement.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b)); apply(); return; }
+      if (b) {
+        c[b.parentElement.dataset.k] = b.dataset.v;
+        b.parentElement.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b));
+        if (b.parentElement.dataset.k === 'explosion') { this.game.saveSettings(); this.testExplosion(); } else apply();
+        return;
+      }
+      if (e.target.closest('[data-a="testboom"]')) { this.testExplosion(); return; }
       if (e.target.closest('[data-a="back"]')) this.show('main');
     });
     el.addEventListener('input', (e) => {
@@ -260,7 +286,7 @@ export class UIManager {
 
   // ------------------------------------------------------------ settings
   settingsMenu() {
-    const tabs = { graphics: 'Graphismes', audio: 'Audio', camera: 'Caméra', controls: 'Commandes' };
+    const tabs = { gameplay: 'Jeu', graphics: 'Graphismes', audio: 'Audio', camera: 'Caméra', controls: 'Commandes' };
     const el = h(`<section class="screen center">
       <div style="width:min(1100px,94vw)">
         <h2>Paramètres</h2>
@@ -308,6 +334,15 @@ export class UIManager {
     const s = row.querySelector('select');
     s.addEventListener('change', () => { obj[key] = s.value; onChange && onChange(); this.game.saveSettings(); });
     parent.appendChild(row);
+  }
+
+  settings_gameplay(p) {
+    const gp = this.game.settings.gameplay, m = this.game.settings.match;
+    this.slider(p, 'Aide au contrôle de balle sur le toit', gp, 'dribbleAssist', 0, 1, 0.05, (v) => Math.round(v * 100) + '%', () => {
+      const s = this.game.session; if (s && !s.online && !s.attract) s.world.dribbleAssist = gp.dribbleAssist;
+    }, '0 % = physique pure. Garde la balle centrée quand tu dribbles (désactivée en l\'air : flicks inchangés)');
+    this.toggle(p, 'Replays des buts', m, 'replays', null, 'Rejoue le but après chaque célébration (Saut pour passer)');
+    this.toggle(p, 'Boost illimité en entraînement libre', m, 'unlimitedBoostFreeplay');
   }
 
   settings_graphics(p) {
@@ -392,7 +427,8 @@ export class UIManager {
           <tr><td>${k('jump')}</td><td>Sauter (maintenir = plus haut). 2e appui = double saut, ou flip si une direction est tenue</td></tr>
           <tr><td>${k('boost')}</td><td>Boost (sol et air)</td></tr>
           <tr><td>${k('powerslide')}</td><td>Powerslide (drift) — en l'air : air roll libre</td></tr>
-          <tr><td>${k('airRollLeft')} / ${k('airRollRight')}</td><td>Air roll gauche / droite</td></tr>
+          <tr><td>${k('airRollLeft')} / ${k('airRollRight')}</td><td>Tonneau aérien (air roll) gauche / droite</td></tr>
+          <tr><td>${k('airRoll')} + ${k('left')}/${k('right')}</td><td>Tonneau aérien libre : maintiens et tourne (comme RL)</td></tr>
           <tr><td>${k('ballCam')}</td><td>Ball Cam</td></tr>
           <tr><td>Flèches</td><td>Commandes alternatives (conduite + aérien)</td></tr>
           <tr><td>${k('scoreboard')}</td><td>Tableau des scores</td></tr>

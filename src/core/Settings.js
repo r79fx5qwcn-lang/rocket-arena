@@ -8,7 +8,8 @@ export const DEFAULT_BINDINGS = {
   right: ['KeyD', 'ArrowRight'],
   jump: ['Space', 'Mouse2'],
   boost: ['ShiftLeft', 'Mouse0'],
-  powerslide: ['ShiftRight', 'ControlLeft'],
+  powerslide: ['ShiftRight'],
+  airRoll: ['ControlLeft', 'KeyX'],
   airRollLeft: ['KeyQ'],
   airRollRight: ['KeyE'],
   ballCam: ['KeyC'],
@@ -24,9 +25,10 @@ export const ACTION_LABELS = {
   right: 'Tourner à droite / Lacet droite',
   jump: 'Sauter (2× = double saut / flip)',
   boost: 'Boost',
-  powerslide: 'Powerslide / Air roll libre',
-  airRollLeft: 'Air roll gauche',
-  airRollRight: 'Air roll droite',
+  powerslide: 'Powerslide (drift) — en l\'air : tonneau libre',
+  airRoll: 'Tonneau aérien (air roll libre) : + gauche/droite',
+  airRollLeft: 'Tonneau aérien gauche',
+  airRollRight: 'Tonneau aérien droite',
   ballCam: 'Ball Cam (on/off)',
   reset: 'Réinitialiser (entraînement)',
   scoreboard: 'Tableau des scores',
@@ -36,12 +38,13 @@ export const ACTION_LABELS = {
 export function defaultSettings() {
   return {
     player: { name: 'Joueur' },
-    car: { style: 'Octane', body: '#1f6bff', accent: '#111318', wheels: '#c8ccd4', boost: '#ff9a2a' },
+    car: { style: 'Vortex', body: '#1f6bff', accent: '#111318', wheels: '#c8ccd4', boost: '#ff9a2a', explosion: 'classic' },
     graphics: { quality: 'high', shadows: true, renderScale: 1, particles: true, showFps: false, crowd: true },
     audio: { master: 0.8, sfx: 0.9, engine: 0.55, ambient: 0.6 },
     camera: { fov: 110, distance: 270, height: 100, angle: -4, stiffness: 0.45, swivelSpeed: 5, ballCamDefault: true, mouseSwivel: false },
     controls: { bindings: structuredCloneSafe(DEFAULT_BINDINGS), deadzone: 0.12, dodgeDeadzone: 0.5, invertPitch: false },
-    match: { duration: 300, difficulty: 'pro', unlimitedBoostFreeplay: true },
+    match: { duration: 300, difficulty: 'pro', unlimitedBoostFreeplay: true, theme: 'random', replays: true },
+    gameplay: { dribbleAssist: 0.7 },
   };
 }
 
@@ -64,6 +67,10 @@ export function loadSettings() {
     const raw = localStorage.getItem(KEY);
     if (raw) merge(s, JSON.parse(raw));
   } catch (e) { /* storage unavailable */ }
+  // older saves used other body names
+  const legacy = { Octane: 'Vortex', Dominus: 'Sabre', Breakout: 'Bulldog', Fennec: 'Bulldog' };
+  if (legacy[s.car.style]) s.car.style = legacy[s.car.style];
+  if (!s.controls.bindings.airRoll) s.controls.bindings.airRoll = DEFAULT_BINDINGS.airRoll.slice();
   return s;
 }
 

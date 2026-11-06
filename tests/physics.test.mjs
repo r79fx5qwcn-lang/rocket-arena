@@ -3,6 +3,7 @@
 import { PhysicsWorld } from '../src/physics/PhysicsWorld.js';
 import { Car } from '../src/physics/Car.js';
 import { Vec3 } from '../src/physics/math.js';
+import { ARENA, CAR_MODELS } from '../src/physics/constants.js';
 
 function makeWorld() {
   const w = new PhysicsWorld();
@@ -64,11 +65,11 @@ for (const [hold, lo, hi] of [[0, 60, 110], [0.2, 215, 260]]) { const { w, car }
   check('Wave dash speed gain', vAfter - v0, 350, 750, 'uu/s'); }
 { const { w, car } = makeWorld(); car.pos.y = 800; car.controls.roll = 1; run(w, 1);
   check('Air roll max angular speed', car.angVel.length(), 5.4, 5.51, 'rad/s'); }
-{ const { w, car } = makeWorld(); car.spawn(2000, 0, 1, 0, 100); car.controls.throttle = 1; run(w, 3.5);
-  check('Wall ride: car on side wall (up.x)', up(car).x, -1.01, -0.95); check('Wall ride: height reached', car.pos.y, 500, 2000, 'uu'); }
+{ const { w, car } = makeWorld(); car.spawn(2000, 0, 1, 0, 100); car.controls.throttle = 1; run(w, 3.0);
+  check('Wall ride: car on side wall (up.x)', up(car).x, -1.01, -0.95); check('Wall ride: height reached', car.pos.y, 500, ARENA.HEIGHT - 400, 'uu'); }
 { const { w, car } = makeWorld(); car.spawn(1000, 0, 1, 0, 100); car.infiniteBoost = true; car.controls.boost = true; let vmin = 9999;
   run(w, 4.5, (t) => { if (t > 1.9 && t < 2.6) vmin = Math.min(vmin, car.vel.length()); });
-  check('Floor→wall transition keeps speed (min)', vmin, 1900, 2301, 'uu/s'); check('Ceiling driving (up.y)', up(car).y, -1.01, -0.95); check('Ceiling height', car.pos.y, 1950, 2044, 'uu'); }
+  check('Floor→wall transition keeps speed (min)', vmin, 1900, 2301, 'uu/s'); check('Ceiling driving (up.y)', up(car).y, -1.01, -0.95); check('Ceiling height', car.pos.y, ARENA.HEIGHT - 100, ARENA.HEIGHT, 'uu'); }
 { const { w, car } = makeWorld(); w.ball.reset(2000, 1000, 0); const peaks = []; let pv = 0;
   run(w, 4, () => { const vy = w.ball.vel.y; if (pv > 0 && vy <= 0) peaks.push(w.ball.pos.y - 91.25); pv = vy; });
   check('Ball bounce ratio (restitution 0.6 → 0.36)', peaks[0] / (1000 - 91.25), 0.32, 0.40); }
@@ -88,5 +89,20 @@ for (const [hold, lo, hi] of [[0, 60, 110], [0.2, 215, 260]]) { const { w, car }
   a.spawn(0, -1500, 0, 1, 100); a.infiniteBoost = true; b.spawn(0, 1500, 1, 0, 0); w.ball.reset(3000, 92, 0); let demo = 0;
   run(w, 2.5, () => { a.controls.boost = true; for (const e of w.events) if (e.type === 'demo') demo++; w.events.length = 0; });
   check('Supersonic demolition', demo, 1, 1); }
+{ const w = new PhysicsWorld(); const a = w.addCar(new Car(0, 0)); a.spawn(0, 4300, 0, 1, 0); w.ball.reset(0, 300, 5300); const vy0 = a.vel.y;
+  w.goalBlast(w.ball.pos);
+  check('Goal explosion blows nearby cars up/back', a.vel.y - vy0, 300, 2000, 'uu/s'); check('Goal explosion pushes away from the goal', -a.vel.z, 300, 2500, 'uu/s'); }
+{ const w = new PhysicsWorld(); w.dribbleAssist = 1; const car = w.addCar(new Car(0, 0)); car.spawn(0, -4000, 0, 1, 100);
+  w.ball.reset(0, car.pos.y + car.ho.y + car.hb.y + 92, -4000); let on = 0;
+  run(w, 5, (t) => { car.controls.throttle = 0.5; car.controls.steer = Math.sin(t) * 0.5; if (w.ball.pos.y - car.pos.y > 80 && w.ball.pos.distanceTo(car.pos) < 200) on++; });
+  check('Dribble assist keeps the ball on the roof', on / 600, 0.85, 1.01); }
+for (const model of CAR_MODELS) {
+  const w = new PhysicsWorld(); const car = w.addCar(new Car(0, 0, model)); car.spawn(0, 0, 0, 1, 100); w.ball.reset(3000, 92, 0);
+  run(w, 2);
+  check(`${model}: rest height`, car.pos.y, 13, 21, 'uu'); check(`${model}: level at rest (up.y)`, up(car).y, 0.999, 1.001);
+  car.controls.throttle = 1; run(w, 1); car.controls.throttle = 0;
+  let land = -1; run(w, 2, (t) => { car.controls.jump = t < 0.15 || (t > 0.25 && t < 0.3); car.controls.pitch = (t > 0.22 && t < 0.35) ? -1 : 0; if (land < 0 && t > 0.4 && car.onGround) land = t; });
+  check(`${model}: front flip lands on wheels`, up(car).y, 0.95, 1.01);
+}
 console.log(failed ? `\n${failed} check(s) failed` : '\nAll physics checks passed');
 process.exit(failed ? 1 : 0);

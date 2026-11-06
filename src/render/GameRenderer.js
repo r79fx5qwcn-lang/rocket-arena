@@ -44,6 +44,7 @@ export class GameRenderer {
     const fill = new THREE.DirectionalLight(0x8899ff, 0.6);
     fill.position.set(-30, 40, -40);
     this.scene.add(fill);
+    this.fill = fill;
 
     this.applyQuality();
     this.resize();
@@ -66,6 +67,14 @@ export class GameRenderer {
     // materials must be recompiled when toggling shadows
     this.scene.traverse((o) => { if (o.material) { const m = Array.isArray(o.material) ? o.material : [o.material]; m.forEach((mm) => { mm.needsUpdate = true; }); } });
     this.resize();
+  }
+
+  applyTheme(t) {
+    this.scene.fog.color.setHex(t.fog); this.scene.fog.near = t.fogNear; this.scene.fog.far = t.fogFar;
+    this.hemi.color.setHex(t.hemi[0]); this.hemi.groundColor.setHex(t.hemi[1]); this.hemi.intensity = t.hemi[2];
+    this.sun.color.setHex(t.sun[0]); this.sun.intensity = t.sun[1];
+    this.fill.color.setHex(t.fill[0]); this.fill.intensity = t.fill[1];
+    this.renderer.toneMappingExposure = t.exposure;
   }
 
   focusShadow(x, y, z) {

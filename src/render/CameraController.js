@@ -36,6 +36,14 @@ export class CameraController {
 
   follow() { this.mode = 'follow'; }
 
+  /** broadcast-style replay camera; goalSide = sign of the z of the goal being scored into */
+  setReplay(goalSide) {
+    this.mode = 'replay';
+    this.replaySide = goalSide;
+    this.replaySideX = Math.random() < 0.5 ? -1 : 1;
+    this.replayInit = false;
+  }
+
   snap() { this.initialized = false; }
 
   updateFov(aspect, extra = 0) {
@@ -54,6 +62,19 @@ export class CameraController {
     this.fovKick += ((ctx.boosting ? 4 : 0) + (ctx.supersonic ? 3 : 0) - this.fovKick) * (1 - Math.exp(-dt * 3));
     this.updateFov(cam.aspect, this.fovKick);
 
+    if (this.mode === 'replay') {
+      const b = ctx.replayBall;
+      _desired.set(b.x + this.replaySideX * 7, Math.max(b.y, 1) + 3.2, b.z - this.replaySide * 11);
+      _anchor.copy(b); _anchor.y = Math.max(b.y, 1.5);
+      this.clampInside(_desired, _anchor);
+      if (!this.replayInit) { this.pos.copy(_desired); this.lookAt.copy(b); this.replayInit = true; }
+      this.pos.lerp(_desired, 1 - Math.exp(-dt * 2.2));
+      this.lookAt.lerp(b, 1 - Math.exp(-dt * 6));
+      this.up.set(0, 1, 0); cam.up.set(0, 1, 0);
+      cam.position.copy(this.pos);
+      cam.lookAt(this.lookAt);
+      return;
+    }
     if (this.mode === 'orbit') {
       const o = this.orbit;
       o.angle += o.speed * dt;

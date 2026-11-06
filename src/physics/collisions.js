@@ -3,16 +3,23 @@ import { Vec3 } from './math.js';
 import { CAR, BALL_HIT, BUMP_VEL_GROUND_CURVE, BUMP_VEL_AIR_CURVE, BUMP_UPWARD_CURVE } from './constants.js';
 import { arenaSdf, arenaNormal } from './Arena.js';
 
-const HB = CAR.HITBOX_HALF, HO = CAR.HITBOX_OFFSET;
 // The ball barely spins the car (like in RL): its contacts act on a stiffer rotational inertia.
 // Keeps flicks / dribbles / air dribbles controllable and landings on the wheels.
 const BALL_ANG = 0.3;
 
-// 26 sample points on the car hitbox (corners, edge midpoints, face centres), local frame
-const SAMPLE_POINTS = [];
-for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) for (let k = -1; k <= 1; k++) {
-  if (i === 0 && j === 0 && k === 0) continue;
-  SAMPLE_POINTS.push(new Vec3(HO.x + i * HB.x, HO.y + j * HB.y, HO.z + k * HB.z));
+// 26 sample points on a hitbox (corners, edge midpoints, face centres), local frame, per body type
+const sampleCache = new Map();
+function samplePoints(car) {
+  let pts = sampleCache.get(car.preset);
+  if (pts) return pts;
+  const HB = car.hb, HO = car.ho;
+  pts = [];
+  for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) for (let k = -1; k <= 1; k++) {
+    if (i === 0 && j === 0 && k === 0) continue;
+    pts.push(new Vec3(HO.x + i * HB.x, HO.y + j * HB.y, HO.z + k * HB.z));
+  }
+  sampleCache.set(car.preset, pts);
+  return pts;
 }
 
 const _p = new Vec3(), _n = new Vec3(), _rel = new Vec3(), _v = new Vec3(), _vt = new Vec3(), _J = new Vec3();
@@ -25,6 +32,7 @@ export function collideCarArena(car) {
   car.bodyContact = false;
   if (car.demolished) return 0;
   let impact = 0;
+  const SAMPLE_POINTS = samplePoints(car);
   // positional correction (iterative, deepest point first)
   for (let iter = 0; iter < 3; iter++) {
     let best = 0, bi = -1;
@@ -87,6 +95,7 @@ export function collideCarArena(car) {
 export function collideCarBall(car, ball, tick) {
   if (car.demolished || ball.frozen) return null;
   const R = ball.radius;
+  const HB = car.hb, HO = car.ho;
   // ball centre in hitbox local frame
   _l.copy(ball.pos).sub(car.pos).applyQuatInv(car.rot);
   _l.x -= HO.x; _l.y -= HO.y; _l.z -= HO.z;
@@ -178,6 +187,7 @@ export function collideCarBall(car, ball, tick) {
 function deepestPointInBox(a, b, out) {
   // finds the sample point of car a that penetrates deepest inside car b's hitbox
   let bestPen = 0, found = false;
+  const SAMPLE_POINTS = samplePoints(a), HB = b.hb, HO = b.ho;
   for (let i = 0; i < SAMPLE_POINTS.length; i++) {
     _p.copy(SAMPLE_POINTS[i]).applyQuat(a.rot).add(a.pos);
     _l.copy(_p).sub(b.pos).applyQuatInv(b.rot);
@@ -246,7 +256,7 @@ export function collideCars(a, b, time) {
     const key = vic.id;
     if ((att.bumpCooldowns[key] || 0) > time) continue;
     _l.copy(c.p).sub(att.pos).applyQuatInv(att.rot);
-    if (_l.x < HO.x + HB.x * 0.6) continue; // must be the front of the attacker
+    if (_l.x < att.ho.x + att.hb.x * 0.6) continue; // must be the front of the attacker
     att.forward(_fa);
     _tmp.copy(vic.pos).sub(att.pos).normalize();
     const speedTowards = att.prevSpeedForBump;
@@ -263,4 +273,25 @@ export function collideCars(a, b, time) {
     return { type: 'bump', attacker: att, victim: vic, strength: speedTowards, point: c.p.clone() };
   }
   return result;
+}
+
+/**
+ * Dribble assist: while the ball rests on the roof, gently pull it toward the middle of
+ * the roof and damp its sliding relative to the car. strength 0..1 (0 = pure physics).
+ */
+export function dribbleAssist(car, ball, dt, strength) {
+  if (strength <= 0 || car.demolished || car.isFlipping || !car.onGround) return; // only while driving: jumps / flicks stay pure physics
+  const HB = car.hb, HO = car.ho;
+  _l.copy(ball.pos).sub(car.pos).applyQuatInv(car.rot);
+  _l.x -= HO.x; _l.y -= HO.y; _l.z -= HO.z;
+  if (_l.y < HB.y || _l.y > HB.y + ball.radius + 25) return;
+  if (Math.abs(_l.x) > HB.x + 15 || Math.abs(_l.z) > HB.z + 15) return;
+  _v.copy(ball.vel).sub(car.vel).applyQuatInv(car.rot); // relative velocity, car frame
+  if (Math.abs(_v.x) + Math.abs(_v.z) > 900 || _v.y > 350) return; // a real hit / pop: no assist
+  const k = 28 * strength, c = 9 * strength;
+  const tx = HB.x * 0.1; // balance point: slightly ahead of the roof centre
+  _tmp.set(-(k * (_l.x - tx) + c * _v.x) * dt, 0, -(k * _l.z + c * _v.z) * dt).applyQuat(car.rot);
+  ball.vel.add(_tmp);
+  // reduce the ball's spin so it does not roll off on its own
+  ball.angVel.scale(1 - Math.min(1, 3 * strength * dt));
 }

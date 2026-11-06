@@ -4,8 +4,8 @@ import { Car } from '../src/physics/Car.js';
 import { Vec3 } from '../src/physics/math.js';
 const up = (car) => new Vec3(0, 1, 0).applyQuat(car.rot);
 let failed = 0;
-function flick(name, P, Y, off, hold, delay, speed, minGain) {
-  const w = new PhysicsWorld(); const car = w.addCar(new Car(0, 0)); car.spawn(0, -3000, 0, 1, 100);
+function flick(name, P, Y, off, hold, delay, speed, minGain, assist = 0) {
+  const w = new PhysicsWorld(); w.dribbleAssist = assist; const car = w.addCar(new Car(0, 0)); car.spawn(0, -3000, 0, 1, 100);
   w.goalDetection = false;
   // dribble: ball balanced on the roof, car and ball moving together
   car.vel.set(0, 0, speed);
@@ -31,6 +31,10 @@ for (const sp of [0, 700]) {
   flick(`45° flick @${sp}`, -0.7, 0.7, 40, 0.15, 0.06, sp, 600);
   flick(`musty flick @${sp}`, 1, 0, -40, 0.08, 0.06, sp, 400);
 }
+// same flicks with the dribble assist (default in game) — must not kill flicks
+flick('front flick, assist 0.7', -1, 0, 40, 0.08, 0.03, 700, 600, 0.7);
+flick('45° flick, assist 0.7', -0.7, 0.7, 40, 0.03, 0.1, 700, 500, 0.7);
+flick('musty flick, assist 0.7', 1, 0, 40, 0.03, 0.15, 0, 400, 0.7);
 // car dropped on its side must recover by itself
 { const w = new PhysicsWorld(); const car = w.addCar(new Car(0, 0)); car.spawn(0, 0, 0, 1, 0);
   car.rot.setFromBasis(new Vec3(0, 0, 1), new Vec3(1, 0, 0)); car.pos.y = 80; w.ball.reset(3000, 92, 0);

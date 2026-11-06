@@ -28,6 +28,7 @@ export class MatchManager {
     this.listeners = {};
     this.lastCountdown = -1;
     this.waitingBallGround = false;
+    this.goalDelay = 3.2; // seconds between a goal and the next kickoff (longer with replays)
   }
 
   on(ev, fn) { (this.listeners[ev] ||= []).push(fn); }
@@ -111,7 +112,7 @@ export class MatchManager {
       return;
     }
     if (this.state === 'goal') {
-      if (this.stateTime > 3.2) {
+      if (this.stateTime > this.goalDelay) {
         if (this.mode.freeplay) { this.kickoff(); return; }
         if (this.overtime || (this.timeLeft <= 0 && this.score[0] !== this.score[1])) { this.end(); return; }
         if (this.timeLeft <= 0) { this.overtime = true; this.overtimeTime = 0; this.emit('overtime'); }
@@ -130,6 +131,7 @@ export class MatchManager {
     this.state = 'goal';
     this.stateTime = 0;
     const w = this.world;
+    w.goalBlast(w.ball.pos);
     w.ball.frozen = true;
     w.ball.hidden = true;
     this.emit('goal', { team, scorer, ownGoal: !!(ev.lastTouch && ev.lastTouch.team !== team), speed: ev.speed, pos: ev.pos, score: this.score.slice() });

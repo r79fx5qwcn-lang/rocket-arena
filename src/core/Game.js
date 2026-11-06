@@ -22,17 +22,20 @@ import { loadSettings, saveSettings } from './Settings.js';
 import { LocalAdapter } from '../net/NetworkAdapter.js';
 import { OnlineManager } from '../net/OnlineManager.js';
 import { Controls } from '../physics/Controls.js';
+import { ReplayRecorder, ReplayPlayer } from './Replay.js';
+import { THEMES, pickTheme } from '../render/themes.js';
+import { EXPLOSIONS } from '../render/Effects.js';
 
 const BOT_NAMES = ['Ziggy', 'Viper', 'Blaze', 'Nova', 'Turbo', 'Kaze', 'Rex', 'Mako', 'Pixel', 'Orion', 'Bandit', 'Echo'];
 const BOT_PAINTS = [
-  { body: '#1f6bff', accent: '#ffffff', wheels: '#1b1d22', boost: '#3ab0ff', style: 'Octane' },
-  { body: '#3a7bff', accent: '#111318', wheels: '#c8ccd4', boost: '#3ab0ff', style: 'Dominus' },
-  { body: '#2456c8', accent: '#22d3ee', wheels: '#c8ccd4', boost: '#3ab0ff', style: 'Breakout' },
+  { body: '#1f6bff', accent: '#ffffff', wheels: '#1b1d22', boost: '#3ab0ff', style: 'Vortex' },
+  { body: '#3a7bff', accent: '#111318', wheels: '#c8ccd4', boost: '#3ab0ff', style: 'Sabre' },
+  { body: '#2456c8', accent: '#22d3ee', wheels: '#c8ccd4', boost: '#3ab0ff', style: 'Bulldog' },
 ];
 const BOT_PAINTS_ORANGE = [
-  { body: '#ff7a1a', accent: '#111318', wheels: '#1b1d22', boost: '#ff9a2a', style: 'Octane' },
-  { body: '#ff8c3a', accent: '#ffffff', wheels: '#c8ccd4', boost: '#ff9a2a', style: 'Dominus' },
-  { body: '#e8641a', accent: '#ffd21a', wheels: '#c8ccd4', boost: '#ff9a2a', style: 'Breakout' },
+  { body: '#ff7a1a', accent: '#111318', wheels: '#1b1d22', boost: '#ff9a2a', style: 'Vortex' },
+  { body: '#ff8c3a', accent: '#ffffff', wheels: '#c8ccd4', boost: '#ff9a2a', style: 'Sabre' },
+  { body: '#e8641a', accent: '#ffd21a', wheels: '#c8ccd4', boost: '#ff9a2a', style: 'Bulldog' },
 ];
 
 export class Game {
@@ -43,8 +46,10 @@ export class Game {
     this.particles = new Particles(scene, 6000);
     this.gfx.onResize = (w, h) => this.particles.setViewportHeight(h * this.gfx.renderer.getPixelRatio());
     this.gfx.resize();
-    this.arena = new ArenaView(scene, this.gfx.renderer);
-    this.stadium = new Stadium(scene, this.settings.graphics.quality);
+    this.themeId = null;
+    this.applyTheme('night');
+    this.recorder = new ReplayRecorder(7);
+    this.replay = null;
     this.camCtl = new CameraController(this.gfx.camera, this.settings.camera);
     this.effects = new Effects(scene, this.particles, this.camCtl);
     this.audio = new AudioManager(this.settings);
@@ -77,6 +82,22 @@ export class Game {
 
   saveSettings() { saveSettings(this.settings); }
 
+  /** rebuild the arena decoration / lighting for a theme (the playing field is identical) */
+  applyTheme(id) {
+    const themeId = pickTheme(id);
+    if (themeId === this.themeId) return themeId;
+    this.themeId = themeId;
+    const theme = THEMES[themeId];
+    if (this.arena) this.arena.dispose();
+    if (this.stadium) this.stadium.dispose();
+    this.arena = new ArenaView(this.gfx.scene, this.gfx.renderer, theme);
+    this.stadium = new Stadium(this.gfx.scene, this.settings.graphics.quality, theme);
+    this.stadium.crowd.visible = this.settings.graphics.crowd;
+    this.gfx.applyTheme(theme);
+    if (this.gfx.renderer.shadowMap.enabled) this.gfx.scene.traverse((o) => { if (o.material && !Array.isArray(o.material)) o.material.needsUpdate = true; });
+    return themeId;
+  }
+
   applyGraphics() {
     const g = this.settings.graphics;
     this.gfx.applyQuality();
@@ -100,7 +121,10 @@ export class Game {
 
   /** mode: key of MODES; opts: {difficulty, duration, attract} */
   startSession(modeId, opts = {}) {
+    this.endReplay();
     this.clearSession();
+    this.applyTheme(opts.online && opts.online.theme ? opts.online.theme : (opts.attract ? 'random' : (opts.theme || this.settings.match.theme)));
+    this.recorder.clear();
     const mode = opts.online
       ? { id: 'online', label: 'En ligne', teamSize: opts.online.teamSize, opponents: opts.online.teamSize, online: true }
       : MODES[modeId];
@@ -112,10 +136,11 @@ export class Game {
     if (opts.online) {
       // cars come from the roster decided by the host (same ids on both machines)
       for (const r of opts.online.roster) {
-        const car = world.addCar(new Car(r.id, r.team));
+        const car = world.addCar(new Car(r.id, r.team, (r.paint && r.paint.style) || 'Vortex'));
         car.name = r.name;
         const me = r.id === opts.online.myId;
         if (me) session.player = car;
+        car.explosion = (r.paint && r.paint.explosion) || 'classic';
         session.carViews.push(new CarView(scene, car, r.paint || {}, this.particles, me ? {} : { name: r.name.replace(' (bot)', '') }));
         if (r.bot && opts.online.role === 'host') session.bots.push(new BotController(car, world, session.shared, diff));
       }
@@ -123,17 +148,21 @@ export class Game {
       const pi = session.carViews.findIndex((v) => v.car === session.player);
       if (pi > 0) session.carViews.unshift(session.carViews.splice(pi, 1)[0]);
     } else if (!opts.attract) {
-      const p = world.addCar(new Car(id++, 0));
+      const p = world.addCar(new Car(id++, 0, this.settings.car.style));
       p.name = this.settings.player.name || 'Joueur';
       p.infiniteBoost = mode.freeplay && this.settings.match.unlimitedBoostFreeplay;
+      p.explosion = this.settings.car.explosion || 'classic';
       session.player = p;
       session.carViews.push(new CarView(scene, p, this.settings.car, this.particles));
     }
     const names = BOT_NAMES.slice().sort(() => Math.random() - 0.5);
     const addBot = (team, idx) => {
-      const car = world.addCar(new Car(id++, team));
-      car.name = names[(id - 1) % names.length] + ' (bot)';
       const paints = team === 0 ? BOT_PAINTS : BOT_PAINTS_ORANGE;
+      const car = world.addCar(new Car(id, team, paints[idx % paints.length].style));
+      id++;
+      car.name = names[(id - 1) % names.length] + ' (bot)';
+      const ex = Object.keys(EXPLOSIONS);
+      car.explosion = ex[Math.floor(Math.random() * ex.length)];
       session.carViews.push(new CarView(scene, car, paints[idx % paints.length], this.particles, { name: names[(id - 1) % names.length] }));
       session.bots.push(new BotController(car, world, session.shared, diff));
     };
@@ -149,8 +178,13 @@ export class Game {
     session.padView = new BoostPadView(scene, world.pads);
     session.match = new MatchManager(world, opts.attract ? MODES.doubles : mode, { duration: opts.duration ?? this.settings.match.duration });
     this.session = session;
+    world.dribbleAssist = opts.attract ? 0 : (opts.online ? (opts.online.assist ?? 0) : this.settings.gameplay.dribbleAssist);
+    const replays = opts.online ? opts.online.replays !== false : this.settings.match.replays;
+    session.match.goalDelay = !opts.attract && !mode.freeplay && replays ? 7.9 : 3.2;
+    session.replays = !opts.attract && !mode.freeplay && replays;
     this.hookMatch(session);
     if (opts.online) this.online.attach(session, opts.online);
+    this.arena.setPlayerTeam(session.player ? session.player.team : 0, !!mode.freeplay || !!opts.attract);
     session.match.kickoffVariant = 0;
     if (!opts.online) session.match.newKickoffVariant();
     session.match.start();
@@ -179,6 +213,31 @@ export class Game {
     this.startSession(modeId, opts);
   }
 
+  startReplay(frames, session, g, style) {
+    this.endReplay();
+    this.replay = new ReplayPlayer(frames, session);
+    this.replay.goal = { team: g.team, speed: g.speed, style };
+    this.camCtl.setReplay(g.team === 0 ? 1 : -1);
+    this.hud.replay(true);
+  }
+
+  endReplay() {
+    if (!this.replay) return;
+    this.replay.restore();
+    this.replay = null;
+    this.hud && this.hud.replay(false);
+    this.camCtl.follow();
+    this.camCtl.snap();
+  }
+
+  skipReplay() {
+    const s = this.session;
+    this.endReplay();
+    if (!s) return;
+    // offline / host: shorten the goal pause (the guest follows the host)
+    if (!s.online || s.online.role === 'host') s.match.stateTime = Math.max(s.match.stateTime, s.match.goalDelay - 0.5);
+  }
+
   backToMenu() {
     if (this.online.active) this.online.leave();
     this.hud.hide();
@@ -194,7 +253,8 @@ export class Game {
     });
     m.on('goal', (g) => {
       const pos = g.pos;
-      this.effects.goal(pos, g.team, g.speed);
+      const style = (g.scorer && g.scorer.explosion) || 'classic';
+      this.effects.goal(pos, g.team, g.speed, style);
       this.arena.flashGoal(g.team === 0 ? 1 : -1);
       this.stadium.cheer(2);
       this.audio.play('goal');
@@ -203,7 +263,14 @@ export class Game {
       if (!session.attract) {
         this.hud.goal(g, session);
         this.camCtl.setOrbit(new THREE.Vector3(pos.x * S, 2, pos.z * S * 0.95), 16, 5, 0.3);
-        setTimeout(() => { if (this.session === session && session.match.state !== 'ended') this.camCtl.follow(); }, 3100);
+        if (session.replays) {
+          // replay of the goal (like in RL): grab the last seconds, play after the celebration
+          let frames = null;
+          this.effects.later(0.35, () => { if (this.session === session) frames = this.recorder.take(5.4); });
+          this.effects.later(2.5, () => { if (this.session === session && frames && session.match.state === 'goal') this.startReplay(frames, session, g, style); });
+        } else {
+          setTimeout(() => { if (this.session === session && session.match.state !== 'ended') this.camCtl.follow(); }, 3100);
+        }
       }
       this.hud.score(g.score);
     });
@@ -250,6 +317,7 @@ export class Game {
     if (this.state === 'playing' && this.session && !this.session.attract) {
       if (inp.consume('pause')) { this.togglePause(); }
       if (this.paused) return;
+      if (this.replay && (inp.consume('jump') || inp.consume('boost'))) this.skipReplay();
       if (inp.consume('ballCam')) { this.ballCam = !this.ballCam; this.hud.ballCam(this.ballCam); }
       const sb = inp.isDown('scoreboard');
       this.hud.showScoreboard(sb, this.session);
@@ -307,14 +375,15 @@ export class Game {
     if (s.online && s.online.role === 'guest') {
       // guest: local prediction, the host is authoritative
       s.tick++;
-      const c = m.state === 'ended' || this.paused ? this._noInput.reset() : this.input.update();
+      const c = m.state === 'ended' || this.paused || this.replay ? this._noInput.reset() : this.input.update();
       for (const e of s.online.step(c)) if (e.type !== 'goal') this.onEvent(e, s);
+      if (s.tick % 2 === 0) this.recorder.record(w);
       return;
     }
     s.tick++;
     // player input
     if (s.player) {
-      if (m.state === 'ended' || this.paused) s.player.controls.reset();
+      if (m.state === 'ended' || this.paused || this.replay) s.player.controls.reset();
       else s.player.controls.copy(this.input.update());
       this.net.sendInput(s.tick, s.player.controls);
     }
@@ -330,6 +399,7 @@ export class Game {
     w.step(DT);
     m.tick(DT);
     if (s.online) s.online.afterStep();
+    if (s.tick % 2 === 0) this.recorder.record(w);
     for (const e of w.consumeEvents()) this.onEvent(e, s);
   }
 
@@ -384,6 +454,20 @@ export class Game {
   // ---------------------------------------------------------------- render
   render(dt, alpha) {
     const s = this.session;
+    if (this.replay) {
+      const r = this.replay;
+      if (!s || s.match.state !== 'goal') this.endReplay();
+      else {
+        alpha = r.update(dt);
+        if (r.justScored) {
+          // the explosion again at the moment of the goal, like the original replays
+          const bp = r.ballPos;
+          this.effects.goal({ x: bp.x, y: bp.y, z: bp.z }, r.goal.team, r.goal.speed, r.goal.style);
+          this.audio.play('goal');
+        }
+        if (r.done) this.endReplay();
+      }
+    }
     if (s) {
       for (const v of s.carViews) v.update(alpha, dt, this.gfx.camera);
       s.ballView.update(alpha, dt);
@@ -392,7 +476,11 @@ export class Game {
     if (this.garage) this.garage.update(dt);
 
     // camera
-    if (s && s.player && this.camCtl.mode === 'follow' && this.state === 'playing') {
+    if (this.replay && s) {
+      this.camCtl.update(dt, { replayBall: s.ballView.mesh.position });
+      const c = s.ballView.mesh.position;
+      this.gfx.focusShadow(c.x, 0, c.z);
+    } else if (s && s.player && this.camCtl.mode === 'follow' && this.state === 'playing') {
       const car = s.player;
       const pv = s.carViews[0].model.root;
       const ballPos = s.ballView.mesh.position;

@@ -120,6 +120,7 @@ export class InputManager {
     if (this.settings.controls.invertPitch) pitch = -pitch;
     let roll = kb('airRollRight') - kb('airRollLeft');
     let jump = this.isDown('jump'), boost = this.isDown('boost'), slide = this.isDown('powerslide');
+    let freeRoll = this.isDown('airRoll');
 
     this.swivel.x = this.mouseSwivel.x; this.swivel.y = this.mouseSwivel.y;
     if (!this.settings.camera.mouseSwivel || !document.pointerLockElement) { this.mouseSwivel.x *= 0.9; this.mouseSwivel.y *= 0.9; }
@@ -159,7 +160,7 @@ export class InputManager {
     c.yaw = c.steer;
     c.pitch = Math.max(-1, Math.min(1, pitch));
     c.roll = roll;
-    c.jump = jump; c.boost = boost; c.handbrake = slide; c.airRoll = slide;
+    c.jump = jump; c.boost = boost; c.handbrake = slide; c.airRoll = slide || freeRoll;
     return c;
   }
 }

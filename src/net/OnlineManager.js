@@ -2,11 +2,13 @@
 import { PeerLink, describeError } from './PeerLink.js';
 import { HostSync, GuestSync, NET_VERSION } from './NetSync.js';
 import { Vec3 } from '../physics/math.js';
+import { pickTheme } from '../render/themes.js';
+import { EXPLOSIONS } from '../render/Effects.js';
 
 const BOT_NAMES = ['Ziggy', 'Viper', 'Blaze', 'Nova', 'Turbo', 'Kaze', 'Rex', 'Mako'];
 const BOT_PAINTS = [
-  [{ body: '#3a7bff', accent: '#111318', wheels: '#c8ccd4', boost: '#3ab0ff', style: 'Dominus' }, { body: '#2456c8', accent: '#22d3ee', wheels: '#c8ccd4', boost: '#3ab0ff', style: 'Breakout' }],
-  [{ body: '#ff8c3a', accent: '#ffffff', wheels: '#c8ccd4', boost: '#ff9a2a', style: 'Dominus' }, { body: '#e8641a', accent: '#ffd21a', wheels: '#c8ccd4', boost: '#ff9a2a', style: 'Breakout' }],
+  [{ body: '#3a7bff', accent: '#111318', wheels: '#c8ccd4', boost: '#3ab0ff', style: 'Sabre' }, { body: '#2456c8', accent: '#22d3ee', wheels: '#c8ccd4', boost: '#3ab0ff', style: 'Bulldog' }],
+  [{ body: '#ff8c3a', accent: '#ffffff', wheels: '#c8ccd4', boost: '#ff9a2a', style: 'Sabre' }, { body: '#e8641a', accent: '#ffd21a', wheels: '#c8ccd4', boost: '#ff9a2a', style: 'Bulldog' }],
 ];
 const r2 = (v) => Math.round(v * 100) / 100;
 
@@ -81,7 +83,7 @@ export class OnlineManager {
     // guest
     if (m.t === 'start') {
       g.ui.hideAll();
-      g.startGame('online', { online: { role: 'guest', roster: m.roster, myId: m.you, link: this.link, teamSize: m.teamSize }, duration: m.duration });
+      g.startGame('online', { online: { role: 'guest', roster: m.roster, myId: m.you, link: this.link, teamSize: m.teamSize, theme: m.theme, assist: m.assist ?? 0, replays: m.replays !== false }, duration: m.duration });
     } else if (m.t === 's') {
       if (s && s.online) s.online.sync.onMessage(m);
     } else if (m.t === 'ev') {
@@ -115,11 +117,16 @@ export class OnlineManager {
     roster.push({ id: id++, team: 1, name: this.guestInfo.name, paint: this.guestInfo.paint, human: 'guest' });
     const names = BOT_NAMES.slice().sort(() => Math.random() - 0.5);
     for (const team of [0, 1]) {
-      for (let i = 1; i < o.teamSize; i++) roster.push({ id: id++, team, name: names[id % names.length] + ' (bot)', paint: BOT_PAINTS[team][i % 2], bot: true });
+      for (let i = 1; i < o.teamSize; i++) {
+        const ex = Object.keys(EXPLOSIONS);
+        roster.push({ id: id++, team, name: names[id % names.length] + ' (bot)', paint: { ...BOT_PAINTS[team][i % 2], explosion: ex[Math.floor(Math.random() * ex.length)] }, bot: true });
+      }
     }
-    this.link.send({ t: 'start', v: NET_VERSION, roster, you: 1, duration: o.duration, teamSize: o.teamSize });
+    const theme = pickTheme(st.match.theme);
+    const assist = st.gameplay.dribbleAssist, replays = st.match.replays;
+    this.link.send({ t: 'start', v: NET_VERSION, roster, you: 1, duration: o.duration, teamSize: o.teamSize, theme, assist, replays });
     g.ui.hideAll();
-    g.startGame('online', { online: { role: 'host', roster, myId: 0, link: this.link, teamSize: o.teamSize }, duration: o.duration, difficulty: o.difficulty });
+    g.startGame('online', { online: { role: 'host', roster, myId: 0, link: this.link, teamSize: o.teamSize, theme, assist, replays }, duration: o.duration, difficulty: o.difficulty });
   }
 
   /** builds session.online for a freshly created session */
@@ -138,7 +145,7 @@ export class OnlineManager {
       session.online = {
         role: 'host', sync, link,
         beforeStep: () => sync.beforeStep(),
-        afterStep: () => sync.afterStep({ s: m.state, tl: r2(m.timeLeft), ot: m.overtime, ott: r2(m.overtimeTime), sc: m.score }),
+        afterStep: () => sync.afterStep({ s: m.state, tl: r2(m.timeLeft), ot: m.overtime, ott: r2(m.overtimeTime), sc: m.score, st: r2(m.stateTime) }),
         beforeFrame() {}, afterFrame() {},
       };
     } else {
@@ -149,7 +156,7 @@ export class OnlineManager {
         beforeFrame: () => {
           if (sync.reconcile() && sync.matchState) {
             const ms = sync.matchState;
-            m.state = ms.s; m.timeLeft = ms.tl; m.overtime = ms.ot; m.overtimeTime = ms.ott; m.score = ms.sc;
+            m.state = ms.s; m.timeLeft = ms.tl; m.overtime = ms.ot; m.overtimeTime = ms.ott; m.score = ms.sc; if (ms.st !== undefined) m.stateTime = ms.st;
           }
         },
         afterFrame: () => sync.flush(),
