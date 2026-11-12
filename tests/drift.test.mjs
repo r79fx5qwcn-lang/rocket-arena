@@ -24,12 +24,13 @@ for (const model of CAR_MODELS) {
     maxYaw = Math.max(maxYaw, Math.abs(car.angVel.y));
   }
   const v1 = car.vel.length();
-  check(`${model}: drift angle (slip between nose & velocity)`, maxSlip, 20, 75, '°');
-  check(`${model}: drift does not spin out (yaw rate)`, maxYaw, 1.5, 3.4, 'rad/s');
-  check(`${model}: speed kept through the drift`, v1 / v0, 0.5, 1.2);
+  check(`${model}: drift angle (slip between nose & velocity)`, maxSlip, 20, 62, '°');
+  check(`${model}: drift does not spin out (yaw rate)`, maxYaw, 1.8, 3.0, 'rad/s');
+  check(`${model}: speed kept through the drift`, v1 / v0, 0.8, 1.2);
   for (let i = 0; i < 150; i++) { c.throttle = 1; c.steer = 0; c.handbrake = false; w.step(); }
   const vd = car.vel.clone().normalize(), f = fwd();
-  check(`${model}: straightens after release (slip)`, Math.acos(Math.max(-1, Math.min(1, vd.x * f.x + vd.z * f.z))) * 180 / Math.PI, 0, 8, '°');
+  check(`${model}: straightens after release (slip)`, Math.acos(Math.max(-1, Math.min(1, vd.x * f.x + vd.z * f.z))) * 180 / Math.PI, 0, 4, '°');
+  check(`${model}: speed after leaving the drift`, car.vel.length() / v0, 0.85, 1.6);
   check(`${model}: still on its wheels`, car.up(new car.pos.constructor()).y, 0.98, 1.01);
 }
 console.log(fails ? `\n${fails} drift check(s) failed` : '\nAll drift checks passed');

@@ -15,6 +15,7 @@ import { Controls } from './Controls.js';
 const _f = new Vec3(), _u = new Vec3(), _r = new Vec3();
 const _a = new Vec3(), _b = new Vec3(), _c = new Vec3(), _d = new Vec3(), _n = new Vec3();
 const _q = new Quat();
+const _dv = new Vec3(), _dw = new Vec3(), _dx = new Vec3(), _dy = new Vec3();
 const _ia = new Vec3(), _ib = new Vec3();
 const _imp = [new Vec3(), new Vec3(), new Vec3(), new Vec3()];
 const _impRel = [new Vec3(), new Vec3(), new Vec3(), new Vec3()];
@@ -64,6 +65,7 @@ export class Car {
     this.isBoosting = false;
     this.boostingTime = 0;
     this.handbrakeVal = 0;
+    this.drifting = false;
 
     // jump state
     this.hasJumped = false; this.isJumping = false; this.jumpTime = 0;
@@ -104,6 +106,49 @@ export class Car {
     if (this.wheels) this.wheels.forEach((w, i) => { w.def = p.WHEELS[i]; });
   }
 
+  /**
+   * Arcade drift (powerslide held on the ground at speed): the steering sets the yaw rate,
+   * the velocity follows the nose with a lag (that lag IS the drift angle) and the speed is
+   * kept instead of being scrubbed by the tyres. Releasing the button lets the velocity
+   * catch up with the nose quickly, so the car comes out of the drift straight and fast.
+   */
+  updateDrift(dt, c, u, fwdG, surf) {
+    const vN = this.vel.dot(u);
+    _dv.copy(this.vel).addScaled(u, -vN); // velocity in the ground plane
+    const speed = _dv.length();
+    const along = speed > 1 ? _dv.dot(fwdG) / speed : 1;
+    const slipAng = Math.acos(Math.max(-1, Math.min(1, Math.abs(along))));
+    if (!this.drifting) {
+      if (this.handbrakeVal > 0.3 && surf >= 3 && speed > CAR.DRIFT_MIN_SPEED && along > 0.2) this.drifting = true;
+      else return;
+    }
+    if (surf < 3 || speed < 200 || along < -0.2 || (this.handbrakeVal < 0.05 && slipAng < 0.05)) { this.drifting = false; return; }
+    const held = this.handbrakeVal > 0.05 && c.handbrake;
+    // yaw: steering drives the rotation, counter-steer straightens it
+    const yaw = this.angVel.dot(u);
+    const k = Math.min(1, speed / 900);
+    const target = held ? -c.steer * CAR.DRIFT_YAW_RATE * k : yaw * Math.exp(-6 * dt);
+    this.angVel.addScaled(u, (target - yaw) * Math.min(1, CAR.DRIFT_YAW_RESPONSE * dt));
+    // velocity direction follows the nose at a limited rate, without losing speed
+    const follow = (held ? CAR.DRIFT_FOLLOW : CAR.DRIFT_EXIT_FOLLOW) * dt;
+    // (beyond the max angle the velocity is pulled back to it at once)
+    const turn = Math.min(slipAng, Math.max(follow, slipAng - CAR.DRIFT_MAX_ANGLE));
+    if (turn > 1e-5 && speed > 1) {
+      // rotate _dv toward the nose direction by `turn`, keeping its length
+      _dw.copy(_dv).scale(1 / speed);
+      _dx.copy(fwdG).scale(along >= 0 ? 1 : -1);
+      _dy.copy(_dx).addScaled(_dw, -_dw.dot(_dx));
+      const yl = _dy.length();
+      if (yl > 1e-6) {
+        _dy.scale(1 / yl);
+        const ct = Math.cos(turn), st = Math.sin(turn);
+        const keep = 1 - CAR.DRIFT_SCRUB * dt; // a little speed is lost while sliding
+        _dw.scale(ct).addScaled(_dy, st).scale(speed * keep);
+        this.vel.copy(_dw).addScaled(u, vN);
+      }
+    }
+  }
+
   // ---------- helpers ----------
   forward(out) { return out.set(1, 0, 0).applyQuat(this.rot); }
   up(out) { return out.set(0, 1, 0).applyQuat(this.rot); }
@@ -140,7 +185,7 @@ export class Car {
     const v3 = (v) => [r(v.x), r(v.y), r(v.z)];
     const f = (this.hasJumped ? 1 : 0) | (this.isJumping ? 2 : 0) | (this.hasDoubleJumped ? 4 : 0) | (this.hasFlipped ? 8 : 0) |
       (this.isFlipping ? 16 : 0) | (this.hasFlipDir ? 32 : 0) | (this.isBoosting ? 64 : 0) | (this.isSupersonic ? 128 : 0) |
-      (this.demolished ? 256 : 0) | (this.frozen ? 512 : 0) | (this.infiniteBoost ? 1024 : 0);
+      (this.demolished ? 256 : 0) | (this.frozen ? 512 : 0) | (this.infiniteBoost ? 1024 : 0) | (this.drifting ? 2048 : 0);
     const st = this.stats;
     return [this.id, v3(this.pos), v3(this.vel), v3(this.angVel),
       [this.rot.x, this.rot.y, this.rot.z, this.rot.w].map((x) => Math.round(x * 1e5) / 1e5),
@@ -159,7 +204,7 @@ export class Car {
     const f = a[6];
     this.hasJumped = !!(f & 1); this.isJumping = !!(f & 2); this.hasDoubleJumped = !!(f & 4); this.hasFlipped = !!(f & 8);
     this.isFlipping = !!(f & 16); this.hasFlipDir = !!(f & 32); this.isBoosting = !!(f & 64); this.isSupersonic = !!(f & 128);
-    this.demolished = !!(f & 256); this.frozen = !!(f & 512); this.infiniteBoost = !!(f & 1024);
+    this.demolished = !!(f & 256); this.frozen = !!(f & 512); this.infiniteBoost = !!(f & 1024); this.drifting = !!(f & 2048);
     this.jumpTime = a[7]; this.flipTime = a[8]; this.airTime = a[9]; this.airTimeSinceJump = a[10];
     set3(this.flipRelTorque, a[11]);
     this.handbrakeVal = a[12]; this.boostingTime = a[13]; this.autoFlipTimer = a[14]; this.supersonicTime = a[15]; this.respawnTimer = a[16];
@@ -180,7 +225,7 @@ export class Car {
     this.jumpTime = this.flipTime = this.airTime = this.airTimeSinceJump = 0;
     this.demolished = false; this.respawnTimer = 0;
     this.isSupersonic = false; this.supersonicTime = 0;
-    this.handbrakeVal = 0; this.isBoosting = false; this.boostingTime = 0;
+    this.handbrakeVal = 0; this.drifting = false; this.isBoosting = false; this.boostingTime = 0;
     this.controls.reset(); this.lastControls.reset();
     this.savePrev();
   }
@@ -330,8 +375,8 @@ export class Car {
         const slip = sum > 10 ? Math.abs(latVel) / sum : 0;
         // drift: with the powerslide the rear tyres let go much more than the front ones,
         // so the back of the car swings out and the car slides through the turn
-        const hbLat = i < 2 ? lerp(1, CAR.DRIFT_FRONT_GRIP, this.handbrakeVal) : lerp(1, HANDBRAKE_LAT_FACTOR * CAR.DRIFT_REAR_GRIP, this.handbrakeVal);
-        let fric = LAT_FRICTION_CURVE.get(slip) * hbLat;
+        // while drifting the tyres barely grip sideways: the drift controller below steers
+        let fric = LAT_FRICTION_CURVE.get(slip) * (this.drifting ? CAR.DRIFT_TYRE_GRIP : lerp(1, HANDBRAKE_LAT_FACTOR, this.handbrakeVal));
         w.slip = latVel;
         if (!fullStick) fric *= NON_STICKY_FRICTION_CURVE.get(Math.abs(n.y));
         const k = this.effInvMass(rel, side);
@@ -344,11 +389,7 @@ export class Car {
         if (this.wheels[i].onBall) ball.vel.addScaled(_imp[i], -ball.invMass);
       }
 
-      // drift assist: the slide can be held but never becomes an uncontrolled spin
-      if (this.handbrakeVal > 0.2) {
-        const yaw = this.angVel.dot(u);
-        if (Math.abs(yaw) > CAR.DRIFT_YAW_LIMIT) this.angVel.addScaled(u, (Math.sign(yaw) * CAR.DRIFT_YAW_LIMIT - yaw));
-      }
+      this.updateDrift(dt, c, u, fwdG, surf);
 
       // ---- sticky force (lets cars drive on walls and ceiling)
       if (surf >= 3 && !this.isJumping) {

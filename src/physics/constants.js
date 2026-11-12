@@ -81,9 +81,15 @@ export const CAR = {
   BOOST_SPAWN: 33.3,
   POWERSLIDE_RISE: 5,
   POWERSLIDE_FALL: 2,
-  DRIFT_FRONT_GRIP: 0.2,  // lateral grip multipliers while the powerslide is held
-  DRIFT_REAR_GRIP: 0.7,   // x HANDBRAKE_LAT_FACTOR
-  DRIFT_YAW_LIMIT: 2.8,   // rad/s: a drift never turns into an uncontrolled spin
+  // arcade drift (powerslide on the ground)
+  DRIFT_MIN_SPEED: 450,     // uu/s to start a drift
+  DRIFT_YAW_RATE: 2.6,      // rad/s at full steer
+  DRIFT_YAW_RESPONSE: 7,    // how fast the yaw reaches its target (1/s)
+  DRIFT_FOLLOW: 1.5,        // rad/s: how fast the velocity follows the nose while drifting
+  DRIFT_EXIT_FOLLOW: 5,     // rad/s once the button is released
+  DRIFT_MAX_ANGLE: 1.05,    // rad (60°): maximum drift angle
+  DRIFT_SCRUB: 0.12,        // fraction of speed lost per second of drift
+  DRIFT_TYRE_GRIP: 0.04,    // lateral tyre grip multiplier while drifting
 
   // Jump
   JUMP_IMMEDIATE: 875 / 3,

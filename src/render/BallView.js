@@ -9,7 +9,9 @@ const ballCbs = new Set();
 export function preloadBallModel() {
   if (ballPromise || typeof fetch === 'undefined') return ballPromise;
   ballPromise = loadModelData('ball', 'ball').then((data) => {
-    ballModel = { ...data, map: loadTex('ball/ball.jpg', true), shadow: loadTex('ball/ball_shadow.png') };
+    const map = loadTex('ball/ball.jpg', true);
+    map.wrapS = map.wrapT = THREE.RepeatWrapping; // the model's UVs are in [-1, 0]
+    ballModel = { ...data, map, shadow: loadTex('ball/ball_shadow.png') };
     for (const cb of [...ballCbs]) cb();
     ballCbs.clear();
   }).catch((e) => console.warn('Modèle de balle indisponible, balle procédurale utilisée :', e.message));
@@ -54,7 +56,7 @@ export class BallView {
       const glow = name === 'Mat.4';
       const mat = glow
         ? new THREE.MeshStandardMaterial({ color: 0x66d1a0, emissive: 0x33b088, emissiveIntensity: 1.6, roughness: 0.4 })
-        : new THREE.MeshStandardMaterial({ map: ballModel.map, roughness: 0.42, metalness: 0.2, emissive: 0x112233, emissiveIntensity: 0.15 });
+        : new THREE.MeshStandardMaterial({ map: ballModel.map, roughness: 0.45, metalness: 0.1 });
       const m = new THREE.Mesh(geo, mat);
       m.castShadow = !glow;
       inner.add(m);
@@ -64,6 +66,9 @@ export class BallView {
     this.scene.remove(this.mesh);
     this.mesh = g;
     this.scene.add(g);
+    // solid ball: only a faint glow around it (the big halo made it look see-through)
+    this.halo.material.opacity = 0.25;
+    this.halo.scale.multiplyScalar(0.8);
     if (ballModel.shadow) { this.shadow.material.map = ballModel.shadow; this.shadow.material.needsUpdate = true; }
   }
 
