@@ -81,6 +81,9 @@ export const CAR = {
   BOOST_SPAWN: 33.3,
   POWERSLIDE_RISE: 5,
   POWERSLIDE_FALL: 2,
+  DRIFT_FRONT_GRIP: 0.2,  // lateral grip multipliers while the powerslide is held
+  DRIFT_REAR_GRIP: 0.7,   // x HANDBRAKE_LAT_FACTOR
+  DRIFT_YAW_LIMIT: 2.8,   // rad/s: a drift never turns into an uncontrolled spin
 
   // Jump
   JUMP_IMMEDIATE: 875 / 3,
@@ -142,15 +145,17 @@ const W4 = (fx, fz, fr, fy, bx, bz, br, by) => [
   { x: fx, y: fy, z: -fz, r: fr, front: true }, { x: fx, y: fy, z: fz, r: fr, front: true },
   { x: bx, y: by, z: -bz, r: br, front: false }, { x: bx, y: by, z: bz, r: br, front: false },
 ];
-// The Fennec body (3D model supplied by the player, public/models/fennec): Octane-size
-// hitbox, wheel positions measured on the model (wheelbase 85.4 uu, radius 12.5 / 13.4).
-// The suspension mounts are set so the car rests level at ~17 uu like the original.
+// Bodies built from the 3D models supplied by the player (public/models/). Hitbox sizes
+// follow the classic hitbox families; wheel positions and radii are measured on each model.
+// Suspension mounts are set so every car rests level at ~17 uu.
 export const CAR_PRESETS = {
+  Octane: preset('Octane', { x: 59.0, y: 18.08, z: 42.1 }, { x: 13.88, y: 20.75, z: 0 }, W4(51.825, 26.24, 12.47, 23.61, -34.275, 28.49, 14.31, 20.02)),
+  Dominus: preset('Dominus', { x: 63.965, y: 15.64, z: 41.64 }, { x: 9.0, y: 15.75, z: 0 }, W4(51.035, 32.17, 12.4, 23.22, -35.485, 33.1, 13.45, 19.48)),
   Fennec: preset('Fennec', { x: 59.0, y: 18.08, z: 42.1 }, { x: 13.88, y: 20.75, z: 0 }, W4(51.45, 29.5, 12.47, 23.57, -33.9, 30.3, 13.43, 19.19)),
 };
 export const CAR_MODELS = Object.keys(CAR_PRESETS);
-// every older body name (saves, online peers on older builds) maps to the Fennec
-export const LEGACY_MODEL = { Octane: 'Fennec', Dominus: 'Fennec', Breakout: 'Fennec', Vortex: 'Fennec', Sabre: 'Fennec', Bulldog: 'Fennec' };
+// older body names (saves, online peers on older builds)
+export const LEGACY_MODEL = { Breakout: 'Dominus', Vortex: 'Octane', Sabre: 'Dominus', Bulldog: 'Fennec' };
 export function getPreset(name) { return CAR_PRESETS[name] || CAR_PRESETS[LEGACY_MODEL[name]] || CAR_PRESETS.Fennec; }
 CAR.INERTIA = CAR_PRESETS.Fennec.INERTIA;
 

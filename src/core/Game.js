@@ -11,6 +11,7 @@ import { Stadium } from '../render/Stadium.js';
 import { BoostPadView } from '../render/BoostPadView.js';
 import { CarView } from '../render/CarView.js';
 import { preloadCarModel } from '../render/CarModel.js';
+import { preloadBallModel } from '../render/BallView.js';
 import { BallView } from '../render/BallView.js';
 import { Particles } from '../render/Particles.js';
 import { Effects } from '../render/Effects.js';
@@ -29,20 +30,21 @@ import { EXPLOSIONS } from '../render/Effects.js';
 
 const BOT_NAMES = ['Ziggy', 'Viper', 'Blaze', 'Nova', 'Turbo', 'Kaze', 'Rex', 'Mako', 'Pixel', 'Orion', 'Bandit', 'Echo'];
 const BOT_PAINTS = [
-  { body: '#1f6bff', accent: '#ffffff', wheels: '#1b1d22', boost: '#3ab0ff', style: 'Fennec' },
+  { body: '#1f6bff', accent: '#ffffff', wheels: '#1b1d22', boost: '#3ab0ff', style: 'Dominus' },
   { body: '#3a7bff', accent: '#111318', wheels: '#c8ccd4', boost: '#3ab0ff', style: 'Fennec' },
-  { body: '#2456c8', accent: '#22d3ee', wheels: '#c8ccd4', boost: '#3ab0ff', style: 'Fennec' },
+  { body: '#2456c8', accent: '#22d3ee', wheels: '#c8ccd4', boost: '#3ab0ff', style: 'Octane' },
 ];
 const BOT_PAINTS_ORANGE = [
-  { body: '#ff7a1a', accent: '#111318', wheels: '#1b1d22', boost: '#ff9a2a', style: 'Fennec' },
+  { body: '#ff7a1a', accent: '#111318', wheels: '#1b1d22', boost: '#ff9a2a', style: 'Dominus' },
   { body: '#ff8c3a', accent: '#ffffff', wheels: '#c8ccd4', boost: '#ff9a2a', style: 'Fennec' },
-  { body: '#e8641a', accent: '#ffd21a', wheels: '#c8ccd4', boost: '#ff9a2a', style: 'Fennec' },
+  { body: '#e8641a', accent: '#ffd21a', wheels: '#c8ccd4', boost: '#ff9a2a', style: 'Octane' },
 ];
 
 export class Game {
   constructor(container, UIClass, HUDClass) {
     this.settings = loadSettings();
-    preloadCarModel(); // the Fennec 3D model loads while the menus are shown
+    preloadCarModel(); // the 3D models load while the menus are shown
+    preloadBallModel();
     this.gfx = new GameRenderer(container, this.settings);
     const scene = this.gfx.scene;
     this.particles = new Particles(scene, 6000);

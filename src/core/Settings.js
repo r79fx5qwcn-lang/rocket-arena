@@ -8,7 +8,7 @@ export const DEFAULT_BINDINGS = {
   right: ['KeyD', 'ArrowRight'],
   jump: ['Space', 'Mouse2'],
   boost: ['ShiftLeft', 'Mouse0'],
-  powerslide: ['ShiftRight'],
+  powerslide: ['ShiftRight', 'KeyV'],
   airRoll: ['ControlLeft', 'KeyX'],
   airRollLeft: ['KeyQ'],
   airRollRight: ['KeyE'],
@@ -68,7 +68,7 @@ export function loadSettings() {
     if (raw) merge(s, JSON.parse(raw));
   } catch (e) { /* storage unavailable */ }
   // older saves used other body names
-  s.car.style = 'Fennec'; // a single body now: every car is the Fennec
+  if (!['Octane', 'Dominus', 'Fennec'].includes(s.car.style)) s.car.style = { Vortex: 'Octane', Sabre: 'Dominus', Breakout: 'Dominus' }[s.car.style] || 'Fennec';
   if (!s.controls.bindings.airRoll) s.controls.bindings.airRoll = DEFAULT_BINDINGS.airRoll.slice();
   return s;
 }

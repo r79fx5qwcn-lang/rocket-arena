@@ -27,9 +27,16 @@ Aucune variable d'environnement ni backend n'est nécessaire. Tout est généré
 
 ## Contenu du jeu
 
-- **Une seule voiture, la Fennec** (modèle 3D fourni, dans `public/models/fennec/`) : toutes les voitures du jeu (toi, les bots, ton ami en ligne) l'utilisent, chacune avec ses couleurs. Dans le Garage, tu choisis la peinture, les bandes et détails, les jantes, la couleur du boost et l'explosion de but. Hitbox 118 × 84 × 36 uu, roues placées exactement comme sur le modèle.
+- **3 voitures, chacune avec sa propre hitbox** (modèles 3D fournis, dans `public/models/`) :
+  - **Octane** : hitbox Octane (118 × 84 × 36 uu) ;
+  - **Dominus** : longue et plate (128 × 83 × 31 uu) ;
+  - **Fennec** : hitbox Octane, carrosserie carrée.
 
-  Le modèle est converti depuis le FBX en un fichier binaire compact (`fennec.bin` + `fennec.json`, environ 1,4 Mo) et chargé pendant les menus. Si ces fichiers sont absents, le jeu affiche à la place une voiture procédurale d'origine.
+  Les roues sont placées exactement comme sur chaque modèle. Dans le Garage, tu choisis la voiture, la peinture, les bandes et détails, les jantes, la couleur du boost et l'explosion de but. Les bots ont un mélange des trois voitures.
+- **Balle** : modèle 3D fourni (`public/models/ball/`), même taille de collision qu'avant (rayon 91,25 uu).
+- **Drift** : maintiens le powerslide (Maj droite ou V, X à la manette) en tournant. L'arrière décroche, la voiture glisse dans le virage avec de la fumée, sans partir en toupie, et se redresse dès que tu relâches.
+
+  Les modèles sont convertis depuis les FBX en fichiers binaires compacts et chargés pendant les menus. Si un modèle manque, le jeu affiche à la place une voiture ou une balle procédurale d'origine.
 
 - **But marqué** : l'explosion projette les voitures proches en l'air et vers l'arrière. Puis le **replay** du but se lance (Saut ou Boost pour passer, désactivable dans Paramètres → Jeu).
 - **7 arènes à thème**, choisies au hasard ou dans « Jouer » : Stade Nocturne, Coucher de Soleil, Néo Métropole (pluie), Toundra Gelée (neige), Désert Rouge (poussière), Forêt d'Automne (feuilles), Plein Jour. Seul le décor change, le terrain est identique.
@@ -68,7 +75,7 @@ Pour limiter le lag :
 | Q / D | Tourner. En l'air : lacet |
 | Espace (ou clic droit) | Sauter (maintenir = plus haut). 2ᵉ appui : double saut, ou flip si une direction est tenue |
 | Maj gauche (ou clic gauche) | Boost |
-| Maj droite | Powerslide. En l'air : air roll libre |
+| Maj droite ou V | Powerslide / drift. En l'air : air roll libre |
 | A / E | Tonneau aérien (air roll) gauche / droite |
 | Ctrl gauche ou X (maintenu) + Q/D | Tonneau aérien libre, comme dans RL |
 | C | Ball Cam on/off |
@@ -134,12 +141,13 @@ Résultats de `npm run test:physics` (extraits) : vitesse max 1410 uu/s ; supers
 - **Flicks** : 100 % physiques. L'impulsion de frappe tient compte de la vitesse de la carrosserie au point de contact, donc une voiture qui tourne pendant un dodge frappe plus fort. Mesuré (`npm run test:landing`) : front flick et flick à 45° autour de +900 à +1100 uu/s, musty jusqu'à +1500 uu/s, toujours avec un atterrissage sur les roues.
 - **Multijoueur en ligne** : pair à pair, à 2 humains maximum (le reste des équipes en bots). L'hôte a l'avantage du ping 0. L'invité voit la balle et les autres voitures avec le délai réseau, compensé par la prédiction.
 - **Flips** : le dodge s'arrête après un tour complet et freine la rotation restante, pour que la voiture sorte du flip à plat. Après un flip trop bas qui touche le sol en pleine rotation, la voiture se remet seule sur ses roues.
+- **Caméra** : ta voiture reste toujours à l'écran. En Ball Cam, si la balle est très haute, la caméra ne lève plus la vue au point de perdre la voiture. Collée à un mur ou au plafond, la caméra choisit un point de vue plus haut ou s'écarte de la paroi au lieu de se coller à la voiture.
 - **Caméra pendant les flicks** : la caméra voiture garde son cap pendant un dodge. La Ball Cam ignore la direction de la balle quand elle est juste au-dessus de la voiture (dribble, flick). La rotation de la caméra est plafonnée et les impacts ne la secouent plus.
 - **Replays** : non inclus. La célébration après un but est une explosion avec caméra orbitale.
 
-## Droits sur le modèle de voiture
+## Droits sur les modèles 3D
 
-Le modèle Fennec et ses textures (`public/models/fennec/`) ont été fournis par toi et semblent provenir de Rocket League (Psyonix / Epic Games). Ils ne sont pas couverts par la licence du code. Pour un usage perso, aucun souci ; pour publier le site en public, vérifie que tu as le droit de diffuser ce modèle. Sinon, supprime le dossier `public/models/fennec/` : le jeu reprendra automatiquement la voiture procédurale d'origine.
+Les modèles Octane, Dominus, Fennec, la balle et leurs textures (`public/models/`) ont été fournis par toi et semblent provenir de Rocket League (Psyonix / Epic Games). Ils ne sont pas couverts par la licence du code. Pour un usage perso, aucun souci ; pour publier le site en public, vérifie que tu as le droit de diffuser ces modèles. Sinon, supprime le dossier `public/models/` : le jeu reprendra automatiquement les voitures et la balle procédurales d'origine.
 
 ## Licence
 

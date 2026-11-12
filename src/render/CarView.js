@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { UU_TO_M as S } from '../physics/constants.js';
-import { buildCarModel, isCarModelReady, onCarModelReady } from './CarModel.js';
+import { buildCarModel, isCarModelReady, onCarModelReady, carShadowTexture } from './CarModel.js';
 import { makeShadowTexture, makeTextSprite } from './textures.js';
 
 const _q0 = new THREE.Quaternion(), _q1 = new THREE.Quaternion();
@@ -16,8 +16,8 @@ export class CarView {
     this.model = buildCarModel(paint);
     scene.add(this.model.root);
     // procedural stand-in until the 3D model has finished loading, then swap it in place
-    this.offReady = isCarModelReady() ? null : onCarModelReady(() => {
-      if (this.disposed) return;
+    this.offReady = isCarModelReady(paint.style) ? null : onCarModelReady((style) => {
+      if (this.disposed || style !== car.model) return;
       this.scene.remove(this.model.root);
       this.model = buildCarModel(this.paint);
       this.scene.add(this.model.root);
@@ -25,8 +25,12 @@ export class CarView {
     this.wheelLen = this.model.wheels.map(() => 30);
     this.boostColor = new THREE.Color(paint.boost || '#ff9a2a');
     this.teamColor = new THREE.Color(car.team === 0 ? 0x3a8bff : 0xff8a2a);
+    // soft car-shaped shadow (texture supplied with the models), radial blob as a fallback
+    const modelShadow = carShadowTexture();
     if (!shadowTex) shadowTex = makeShadowTexture();
-    this.shadow = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 1.2), new THREE.MeshBasicMaterial({ map: shadowTex, transparent: true, depthWrite: false, opacity: 0.6 }));
+    this.shadow = modelShadow
+      ? new THREE.Mesh(new THREE.PlaneGeometry(2.4, 2.4), new THREE.MeshBasicMaterial({ map: modelShadow, transparent: true, depthWrite: false, opacity: 0.6 }))
+      : new THREE.Mesh(new THREE.PlaneGeometry(1.6, 1.2), new THREE.MeshBasicMaterial({ map: shadowTex, transparent: true, depthWrite: false, opacity: 0.6 }));
     this.shadow.rotation.x = -Math.PI / 2;
     this.shadow.renderOrder = 1;
     scene.add(this.shadow);
@@ -84,6 +88,22 @@ export class CarView {
       this.label.position.set(root.position.x, root.position.y + 1.25, root.position.z);
       const d = camera ? camera.position.distanceTo(root.position) : 10;
       this.label.material.opacity = THREE.MathUtils.clamp((d - 4) / 6, 0, 1);
+    }
+
+    // drift smoke from the sliding rear tyres
+    this.smokeAcc = (this.smokeAcc || 0);
+    for (let i = 2; i < 4; i++) {
+      const pw = car.wheels[i];
+      const slide = pw.contact && !pw.onBall ? Math.abs(pw.slip || 0) : 0;
+      if (slide < 280) continue;
+      this.smokeAcc += dt * Math.min(70, (slide - 280) * 0.12);
+      while (this.smokeAcc >= 1) {
+        this.smokeAcc -= 1;
+        const g = 0.75 + Math.random() * 0.15;
+        this.particles.emit(pw.point.x * S + (Math.random() - 0.5) * 0.2, pw.point.y * S + 0.12, pw.point.z * S + (Math.random() - 0.5) * 0.2,
+          car.vel.x * S * 0.1 + (Math.random() - 0.5) * 0.8, 0.5 + Math.random() * 0.6, car.vel.z * S * 0.1 + (Math.random() - 0.5) * 0.8,
+          g, g, g, 0.35, 0.7 + Math.random() * 0.4, { drag: 2.5, grow: 2.2 });
+      }
     }
 
     // boost flame + particles

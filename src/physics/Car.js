@@ -52,7 +52,7 @@ export class Car {
       contact: false, onBall: false,
       length: CAR.SUSP_REST, // current suspension length (visual)
       point: new Vec3(), normal: new Vec3(0, 1, 0),
-      steer: 0, spin: 0,
+      steer: 0, spin: 0, slip: 0,
     }));
     this.surfaceContacts = 0;
     this.ballContacts = 0;
@@ -227,7 +227,7 @@ export class Car {
         w.point.copy(conn).addScaled(_b, t);
         if (w.onBall) onBall++; else { surf++; _n.add(w.normal); }
       } else {
-        w.contact = false;
+        w.contact = false; w.slip = 0;
         w.length = Math.min(CAR.SUSP_REST, w.length + 300 * dt); // visual extension
       }
       // visual wheel spin
@@ -328,7 +328,11 @@ export class Car {
         const latVel = pv.dot(side), longVel = pv.dot(wf);
         const sum = Math.abs(latVel) + Math.abs(longVel);
         const slip = sum > 10 ? Math.abs(latVel) / sum : 0;
-        let fric = LAT_FRICTION_CURVE.get(slip) * lerp(1, HANDBRAKE_LAT_FACTOR, this.handbrakeVal);
+        // drift: with the powerslide the rear tyres let go much more than the front ones,
+        // so the back of the car swings out and the car slides through the turn
+        const hbLat = i < 2 ? lerp(1, CAR.DRIFT_FRONT_GRIP, this.handbrakeVal) : lerp(1, HANDBRAKE_LAT_FACTOR * CAR.DRIFT_REAR_GRIP, this.handbrakeVal);
+        let fric = LAT_FRICTION_CURVE.get(slip) * hbLat;
+        w.slip = latVel;
         if (!fullStick) fric *= NON_STICKY_FRICTION_CURVE.get(Math.abs(n.y));
         const k = this.effInvMass(rel, side);
         const j = -0.2 * fric * latVel / k;
@@ -338,6 +342,12 @@ export class Car {
         if (!this.wheels[i].contact) continue;
         this.applyImpulse(_imp[i], _impRel[i]);
         if (this.wheels[i].onBall) ball.vel.addScaled(_imp[i], -ball.invMass);
+      }
+
+      // drift assist: the slide can be held but never becomes an uncontrolled spin
+      if (this.handbrakeVal > 0.2) {
+        const yaw = this.angVel.dot(u);
+        if (Math.abs(yaw) > CAR.DRIFT_YAW_LIMIT) this.angVel.addScaled(u, (Math.sign(yaw) * CAR.DRIFT_YAW_LIMIT - yaw));
       }
 
       // ---- sticky force (lets cars drive on walls and ceiling)

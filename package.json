@@ -3,17 +3,18 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "description": "Jeu 3D inspiré de Rocket League — Three.js + moteur physique dédié 120 Hz — prêt pour Netlify",
+  "description": "Jeu 3D inspir\u00e9 de Rocket League \u2014 Three.js + moteur physique d\u00e9di\u00e9 120 Hz \u2014 pr\u00eat pour Netlify",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
     "test:physics": "node tests/physics.test.mjs",
     "test:bots": "node tests/bots.test.mjs pro 3 120",
-    "test": "node tests/physics.test.mjs && node tests/landing.test.mjs && node tests/smoothness.test.mjs 300 && node tests/netsync.test.mjs && node tests/bots.test.mjs pro 2 60",
+    "test": "node tests/physics.test.mjs && node tests/landing.test.mjs && node tests/smoothness.test.mjs 300 && node tests/netsync.test.mjs && node tests/bots.test.mjs pro 2 60 && node tests/drift.test.mjs",
     "test:landing": "node tests/landing.test.mjs",
     "test:arena": "node tests/smoothness.test.mjs 600",
-    "test:net": "node tests/netsync.test.mjs"
+    "test:net": "node tests/netsync.test.mjs",
+    "test:drift": "node tests/drift.test.mjs"
   },
   "dependencies": {
     "three": "^0.170.0",

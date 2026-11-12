@@ -7,6 +7,7 @@ import { Vec3 } from '../physics/math.js';
 const _dir = new THREE.Vector3(), _f = new THREE.Vector3(), _target = new THREE.Vector3(), _desired = new THREE.Vector3();
 const _look = new THREE.Vector3(), _tmp = new THREE.Vector3(), _q = new THREE.Quaternion();
 const _nrm = new Vec3();
+const _cand = new THREE.Vector3(), _toCar = new THREE.Vector3(), _axis = new THREE.Vector3();
 const _alt = new THREE.Vector3(), _up = new THREE.Vector3(), _anchor = new THREE.Vector3(), _seg = new THREE.Vector3(), _probe = new THREE.Vector3();
 
 export class CameraController {
@@ -166,10 +167,20 @@ export class CameraController {
     _desired.copy(carPos).addScaledVector(view, -dist).addScaledVector(up, height);
     const frac = this.clampInside(_desired, _anchor);
     if (frac < 0.8) {
-      // blocked by a wall/ceiling behind the car: try a higher, closer viewpoint
-      _alt.copy(carPos).addScaledVector(view, -dist * 0.55).addScaledVector(up, height + dist * 0.5);
-      const fracAlt = this.clampInside(_alt, _anchor);
-      if (fracAlt * _alt.distanceTo(carPos) > frac * _desired.distanceTo(carPos) * 1.0 + 0.05) _desired.copy(_alt);
+      // blocked by a wall/ceiling behind the car: try higher / more top-down viewpoints and
+      // keep the one that stays furthest from the car (the car must never fill the screen)
+      let best = frac * dist, bestK = -1;
+      arenaNormal(carPos.x / S, carPos.y / S, carPos.z / S, _nrm);
+      for (let k = 0; k < 3; k++) {
+        const back = k === 0 ? 0.55 : k === 1 ? 0.2 : 0.35, lift = k === 0 ? 0.5 : 0.95;
+        if (k < 2) _alt.copy(carPos).addScaledVector(view, -dist * back).addScaledVector(up, height + dist * lift);
+        // squeezed against a wall / the ceiling: step back from that surface instead
+        else _alt.set(carPos.x + _nrm.x * dist * 0.95, carPos.y + _nrm.y * dist * 0.95, carPos.z + _nrm.z * dist * 0.95).addScaledVector(view, -dist * back);
+        this.clampInside(_alt, _anchor);
+        const clear = _alt.distanceTo(carPos);
+        if (clear > best * 1.05 + 0.05) { best = clear; bestK = k; _cand.copy(_alt); }
+      }
+      if (bestK >= 0) _desired.copy(_cand);
     }
 
     // ---- look target
@@ -194,6 +205,7 @@ export class CameraController {
     this.lookAt.lerp(_look, kl);
     this.clampInside(this.pos, _anchor); // the smoothed position must stay inside too
     this.initialized = true;
+    this.keepCarInFrame(carPos);
 
     cam.position.copy(this.pos);
     if (this.shakeAmp > 0.001) {
@@ -205,6 +217,30 @@ export class CameraController {
     }
     cam.up.copy(up);
     cam.lookAt(this.lookAt);
+  }
+
+  /**
+   * The player's car must always be on screen: if the look direction (ball cam on a high
+   * ball, flips, walls...) drifts too far from the car, rotate it back toward the car.
+   */
+  keepCarInFrame(carPos) {
+    const vHalf = THREE.MathUtils.degToRad(this.camera.fov / 2);
+    const maxAng = vHalf * 0.78; // the car stays well inside the frame (not on the edge)
+    _look.copy(this.lookAt).sub(this.pos);
+    const lookLen = _look.length();
+    _toCar.copy(carPos).sub(this.pos);
+    if (lookLen < 1e-4 || _toCar.lengthSq() < 1e-6) return;
+    _look.multiplyScalar(1 / lookLen);
+    _toCar.normalize();
+    const ang = Math.acos(THREE.MathUtils.clamp(_look.dot(_toCar), -1, 1));
+    if (ang <= maxAng) return;
+    // rotate the look direction toward the car around their common axis
+    _axis.crossVectors(_look, _toCar);
+    if (_axis.lengthSq() < 1e-8) _axis.copy(this.up);
+    _axis.normalize();
+    _q.setFromAxisAngle(_axis, ang - maxAng);
+    _look.applyQuaternion(_q);
+    this.lookAt.copy(this.pos).addScaledVector(_look, Math.max(lookLen, 5));
   }
 
   /**

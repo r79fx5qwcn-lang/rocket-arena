@@ -1,58 +1,93 @@
-// Car models. Every car uses the Fennec 3D model (public/models/fennec, converted from the
-// FBX supplied by the player) painted with its owner's colours. Until the model files are
-// loaded (or if they can't be), a procedural car from carDesigns.js is shown instead.
+// Car models. The cars use the 3D models supplied by the player (public/models/<car>/,
+// converted from FBX) painted with their owner's colours. Until a model has loaded (or if
+// its files are missing), a procedural car from carDesigns.js is shown instead.
 // Local axes: +X forward, +Y up, +Z right. Model data is in uu, converted with S.
 import * as THREE from 'three';
 import { UU_TO_M as S, getPreset, CAR_MODELS } from '../physics/constants.js';
 import { buildDesign, buildWheel } from './carDesigns.js';
 
-// ---------------------------------------------------------------- Fennec model loading
-const BASE = ((typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.BASE_URL) || '/') + 'models/fennec/';
-// model space -> centre-of-mass space (front axle at x = 51.45, ground 16.7 uu below the CoM)
-const MODEL_OFFSET = { x: 5.96, y: -16.72 };
-const MODEL_WHEEL_R = 12.47; // radius of the wheel mesh stored in the file (front wheel)
-let fennec = null, fennecPromise = null;
+// ---------------------------------------------------------------- model files
+export const MODELS_BASE = ((typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.BASE_URL) || '/') + 'models/';
+const REST_Y = -16.72; // the model's ground is this far below the centre of mass at rest
+// offX: model space -> centre-of-mass space along the car (aligns the axles with the physics wheels)
+// mats: model material name -> role
+const MODEL_DEFS = {
+  Fennec: {
+    offX: 5.96,
+    mats: { 'Fennec - Body': 'paint', Paint: 'trim', 'Fennec Chassis': 'chassis', Window: 'glass', Headlights: 'lights', 'Alpha Rim': 'rim', 'Dieci Tread': 'tread' },
+    tex: { chassis: 'chassis.jpg', chassisN: 'chassis_n.jpg', rim: 'rim_mask.jpg', rimN: 'rim_n.jpg' },
+  },
+  Octane: {
+    offX: 6.645,
+    mats: { 'Octane Body': 'paintMask', Paint: 'trim', 'Octane Chassis': 'chassis', Window: 'glass', Headlights: 'lights', 'Dieci Rim': 'rim', 'Dieci Tread': 'tread' },
+    tex: { chassis: 'chassis.jpg', bodyMask: 'body_mask.jpg' },
+  },
+  Dominus: {
+    offX: 9.105,
+    mats: { 'Dominus Body': 'paint', Paint: 'trim', 'Dominus Chassis': 'chassis', Window: 'glass', Headlights: 'lights', Cristiano: 'rim', Tread: 'tread' },
+    tex: { chassis: 'chassis.jpg' },
+  },
+};
+export const CAR_LABELS = {
+  Octane: { label: 'Octane', tagline: 'Polyvalente · hitbox Octane' },
+  Dominus: { label: 'Dominus', tagline: 'Longue et plate · hitbox Dominus' },
+  Fennec: { label: 'Fennec', tagline: 'Carrée · hitbox Octane' },
+};
+
+const loaded = {}; // style -> { geos, layout, tex }
+let shared = null, preloadPromise = null;
 const readyCbs = new Set();
 
-export function isCarModelReady() { return !!fennec; }
-export function onCarModelReady(cb) { if (fennec) cb(); else readyCbs.add(cb); return () => readyCbs.delete(cb); }
+export function isCarModelReady(style) { return !!loaded[getPreset(style).name]; }
+/** cb(style) is called each time a car model finishes loading */
+export function onCarModelReady(cb) { readyCbs.add(cb); return () => readyCbs.delete(cb); }
+
+const TYPED = { float32: Float32Array, int8: Int8Array, uint16: Uint16Array, uint32: Uint32Array };
+/** loads <dir>/<name>.json + .bin and returns { layout, geos: {partName: BufferGeometry} } */
+export async function loadModelData(dir, name) {
+  const [layout, bin] = await Promise.all([
+    fetch(MODELS_BASE + dir + '/' + name + '.json').then((r) => { if (!r.ok) throw new Error(name + '.json ' + r.status); return r.json(); }),
+    fetch(MODELS_BASE + dir + '/' + name + '.bin').then((r) => { if (!r.ok) throw new Error(name + '.bin ' + r.status); return r.arrayBuffer(); }),
+  ]);
+  const arr = (a) => new TYPED[a.t](bin, a.o, a.n);
+  const geos = {};
+  for (const p of layout.parts) {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(arr(p.pos), 3));
+    g.setAttribute('normal', new THREE.BufferAttribute(arr(p.nrm), 3, true));
+    g.setAttribute('uv', new THREE.BufferAttribute(arr(p.uv), 2));
+    g.setIndex(new THREE.BufferAttribute(arr(p.idx), 1));
+    g.computeBoundingSphere();
+    geos[p.name] = g;
+  }
+  return { layout, geos };
+}
+
+let texLoader = null;
+export function loadTex(path, srgb = false) {
+  if (!texLoader) texLoader = new THREE.TextureLoader();
+  const t = texLoader.load(MODELS_BASE + path);
+  if (srgb) t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 4;
+  return t;
+}
 
 export function preloadCarModel() {
-  if (fennecPromise || typeof fetch === 'undefined') return fennecPromise;
-  fennecPromise = (async () => {
-    const [layout, bin] = await Promise.all([
-      fetch(BASE + 'fennec.json').then((r) => { if (!r.ok) throw new Error('fennec.json ' + r.status); return r.json(); }),
-      fetch(BASE + 'fennec.bin').then((r) => { if (!r.ok) throw new Error('fennec.bin ' + r.status); return r.arrayBuffer(); }),
-    ]);
-    const typed = { float32: Float32Array, int8: Int8Array, uint16: Uint16Array, uint32: Uint32Array };
-    const arr = (a) => new typed[a.t](bin, a.o, a.n);
-    const geos = {};
-    for (const p of layout.parts) {
-      const g = new THREE.BufferGeometry();
-      g.setAttribute('position', new THREE.BufferAttribute(arr(p.pos), 3));
-      g.setAttribute('normal', new THREE.BufferAttribute(arr(p.nrm), 3, true));
-      g.setAttribute('uv', new THREE.BufferAttribute(arr(p.uv), 2));
-      g.setIndex(new THREE.BufferAttribute(arr(p.idx), 1));
-      g.computeBoundingSphere();
-      geos[p.name] = g;
-    }
-    const tl = new THREE.TextureLoader();
-    const tex = (f, srgb) => {
-      const t = tl.load(BASE + f);
-      if (srgb) t.colorSpace = THREE.SRGBColorSpace;
-      t.anisotropy = 4;
-      return t;
-    };
-    fennec = {
-      geos, layout,
-      tex: { chassis: tex('chassis.jpg', true), chassisN: tex('chassis_n.jpg'), rim: tex('rim_mask.jpg', true), rimN: tex('rim_n.jpg'), treadN: tex('tread_n.png') },
-    };
-    for (const cb of [...readyCbs]) { try { cb(); } catch (e) { console.error(e); } }
-    readyCbs.clear();
-    return fennec;
-  })().catch((e) => { console.warn('Fennec model unavailable, using the procedural car:', e.message); return null; });
-  return fennecPromise;
+  if (preloadPromise || typeof fetch === 'undefined') return preloadPromise;
+  shared = { tread: loadTex('shared/tread.jpg', true), treadN: loadTex('shared/tread_n.png'), shadow: loadTex('shared/car_shadow.png') };
+  preloadPromise = Promise.all(Object.entries(MODEL_DEFS).map(async ([style, def]) => {
+    try {
+      const dir = style.toLowerCase();
+      const data = await loadModelData(dir, dir);
+      const tex = {};
+      for (const [k, f] of Object.entries(def.tex)) tex[k] = loadTex(dir + '/' + f, k === 'chassis' || k === 'rim');
+      loaded[style] = { ...data, tex };
+      for (const cb of [...readyCbs]) { try { cb(style); } catch (e) { console.error(e); } }
+    } catch (e) { console.warn(`Modèle ${style} indisponible, voiture procédurale utilisée :`, e.message); }
+  }));
+  return preloadPromise;
 }
+export function carShadowTexture() { return shared && shared.shadow; }
 
 export const PAINTS = {
   body: [
@@ -100,8 +135,8 @@ function buildMaterials(opts) {
 
 function cachedDesign(style) {
   if (!geoCache.has(style)) {
-    const preset = getPreset('Fennec');
-    const d = buildDesign(style, preset.WHEELS);
+    const preset = getPreset(style);
+    const d = buildDesign({ Octane: 'Vortex', Dominus: 'Sabre', Fennec: 'Bulldog' }[style] || 'Vortex', preset.WHEELS);
     // merge parts per material: few draw calls per car
     const byMat = new Map();
     for (const p of d.parts) {
@@ -125,40 +160,50 @@ function cachedDesign(style) {
   return geoCache.get(style);
 }
 
-function buildFennec(opts) {
-  const preset = getPreset('Fennec');
+function buildFromModel(style, opts) {
+  const preset = getPreset(style);
+  const def = MODEL_DEFS[style], data = loaded[style], t = data.tex;
   const mats = buildMaterials(opts);
-  const t = fennec.tex;
-  const paint = mats.body;
-  const trim = mats.accent;
-  const chassisMat = new THREE.MeshStandardMaterial({ color: 0xffffff, map: t.chassis, normalMap: t.chassisN, metalness: 0.35, roughness: 0.55 });
-  const windowMat = mats.glass;
-  const lightMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xfff2e0, emissiveIntensity: 2.4 });
-  const rimMat = new THREE.MeshStandardMaterial({ color: mats.rim.color, map: t.rim, normalMap: t.rimN, metalness: 0.85, roughness: 0.28 });
-  const treadMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, normalMap: t.treadN, metalness: 0, roughness: 0.92 });
-  const byName = {
-    'body:Fennec - Body': paint, 'body:Paint': trim, 'body:Fennec Chassis': chassisMat,
-    'body:Window': windowMat, 'body:Headlights': lightMat,
-    'wheel:Alpha Rim': rimMat, 'wheel:Dieci Tread': treadMat,
+  const accentCol = mats.accent.color.clone();
+  const paintMask = mats.body.clone();
+  if (t.bodyMask) {
+    // body texture = paint mask: white -> main paint, grey -> accent colour
+    paintMask.map = t.bodyMask;
+    paintMask.onBeforeCompile = (sh) => {
+      sh.uniforms.accentCol = { value: accentCol };
+      sh.fragmentShader = sh.fragmentShader
+        .replace('void main() {', 'uniform vec3 accentCol;\nvoid main() {')
+        .replace('#include <map_fragment>', 'float pmask = smoothstep(0.35, 0.75, texture2D(map, vMapUv).r);\ndiffuseColor.rgb = mix(accentCol, diffuseColor.rgb, pmask);');
+    };
+  }
+  const roles = {
+    paint: mats.body,
+    paintMask,
+    trim: mats.accent,
+    chassis: new THREE.MeshStandardMaterial({ color: 0xffffff, map: t.chassis, normalMap: t.chassisN || null, metalness: 0.35, roughness: 0.55 }),
+    glass: mats.glass,
+    lights: new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xfff2e0, emissiveIntensity: 2.4 }),
+    rim: new THREE.MeshStandardMaterial({ color: mats.rim.color, map: t.rim || null, normalMap: t.rimN || null, metalness: 0.85, roughness: 0.28 }),
+    tread: new THREE.MeshStandardMaterial({ color: 0xffffff, map: shared.tread, normalMap: shared.treadN, metalness: 0, roughness: 0.92 }),
   };
-  Object.assign(mats, { chassisTex: chassisMat, lights: lightMat, rim: rimMat, tire: treadMat });
+  const matFor = (name) => roles[def.mats[name.split(':')[1]]] || roles.chassis;
 
   const root = new THREE.Group();
   const chassis = new THREE.Group();
   root.add(chassis);
   const body = new THREE.Group();
   body.scale.setScalar(S);
-  body.position.set(MODEL_OFFSET.x * S, MODEL_OFFSET.y * S, 0);
+  body.position.set(def.offX * S, REST_Y * S, 0);
   chassis.add(body);
-  for (const [name, geo] of Object.entries(fennec.geos)) {
+  for (const [name, geo] of Object.entries(data.geos)) {
     if (!name.startsWith('body:')) continue;
-    const m = new THREE.Mesh(geo, byName[name] || chassisMat);
-    m.castShadow = name !== 'body:Headlights';
+    const m = new THREE.Mesh(geo, matFor(name));
+    m.castShadow = !name.endsWith('Headlights');
     body.add(m);
   }
 
-  // boost flame out of the rear exhaust
-  const rearX = fennec.layout.bbox.min[0] + MODEL_OFFSET.x;
+  // boost flame out of the rear
+  const rearX = data.layout.bbox.min[0] + def.offX;
   const nozzle = { x: (rearX + 4) * S, y: 2 * S };
   const flame = new THREE.Group();
   const outer = new THREE.Mesh(new THREE.ConeGeometry(7 * S, 60 * S, 14, 1, true), mats.flame);
@@ -170,17 +215,19 @@ function buildFennec(opts) {
   flame.visible = false;
   chassis.add(flame);
 
-  // wheels: one mesh, mirrored for the other side and scaled for the bigger rear wheels
+  // wheels: one mesh (outer face towards +Z), mirrored for the other side, scaled per axle
+  const wheelR = data.layout.wheelR || 12.47;
   const wheels = preset.WHEELS.map((wd) => {
     const pivot = new THREE.Group();
     const spinner = new THREE.Group();
     const holder = new THREE.Group();
-    const k = wd.r / MODEL_WHEEL_R;
+    const k = wd.r / wheelR;
     holder.scale.set(k * S, k * S, (wd.z < 0 ? -k : k) * S);
-    for (const [name, geo] of Object.entries(fennec.geos)) {
+    for (const [name, geo] of Object.entries(data.geos)) {
       if (!name.startsWith('wheel:')) continue;
-      const m = new THREE.Mesh(geo, byName[name] || treadMat);
-      m.castShadow = name === 'wheel:Dieci Tread';
+      const role = def.mats[name.split(':')[1]];
+      const m = new THREE.Mesh(geo, role === 'tread' ? roles.tread : roles.rim);
+      m.castShadow = role === 'tread';
       holder.add(m);
     }
     spinner.add(holder);
@@ -189,12 +236,13 @@ function buildFennec(opts) {
     root.add(pivot);
     return { pivot, spinner, def: wd };
   });
-  return { root, chassis, wheels, flame, mats, nozzle, fennec: true };
+  return { root, chassis, wheels, flame, mats: Object.assign(mats, roles), nozzle, fromModel: true };
 }
 
 export function buildCarModel(opts = {}) {
-  if (fennec) return buildFennec(opts);
-  const design = cachedDesign('Vortex');
+  const style = getPreset(opts.style).name;
+  if (loaded[style]) return buildFromModel(style, opts);
+  const design = cachedDesign(style);
   const mats = buildMaterials(opts);
   const root = new THREE.Group();
   const chassis = new THREE.Group();

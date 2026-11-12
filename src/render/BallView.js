@@ -1,6 +1,20 @@
 import * as THREE from 'three';
 import { BALL, UU_TO_M as S } from '../physics/constants.js';
 import { makeBallTexture, makeShadowTexture, makeRadialSprite } from './textures.js';
+import { loadModelData, loadTex } from './CarModel.js';
+
+// Ball 3D model supplied by the player (public/models/ball), procedural sphere until loaded.
+let ballModel = null, ballPromise = null;
+const ballCbs = new Set();
+export function preloadBallModel() {
+  if (ballPromise || typeof fetch === 'undefined') return ballPromise;
+  ballPromise = loadModelData('ball', 'ball').then((data) => {
+    ballModel = { ...data, map: loadTex('ball/ball.jpg', true), shadow: loadTex('ball/ball_shadow.png') };
+    for (const cb of [...ballCbs]) cb();
+    ballCbs.clear();
+  }).catch((e) => console.warn('Modèle de balle indisponible, balle procédurale utilisée :', e.message));
+  return ballPromise;
+}
 
 const _q0 = new THREE.Quaternion(), _q1 = new THREE.Quaternion();
 
@@ -15,6 +29,7 @@ export class BallView {
     );
     this.mesh.castShadow = true;
     scene.add(this.mesh);
+    this.scene = scene;
     // glow halo
     this.halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: makeRadialSprite('rgba(170,200,255,0.55)', 'rgba(170,200,255,0)'), depthWrite: false, transparent: true, blending: THREE.AdditiveBlending }));
     this.halo.scale.set(r * 3.2, r * 3.2, 1);
@@ -25,9 +40,34 @@ export class BallView {
     this.shadow.renderOrder = 1;
     scene.add(this.shadow);
     this.trailAcc = 0;
+    if (ballModel) this.useModel(); else ballCbs.add(this._onModel = () => this.useModel());
   }
 
-  dispose(scene) { scene.remove(this.mesh, this.halo, this.shadow); }
+  /** replaces the procedural sphere with the supplied 3D ball */
+  useModel() {
+    if (this.disposed || !ballModel) return;
+    const g = new THREE.Group();
+    const inner = new THREE.Group();
+    inner.scale.setScalar(S * BALL.VISUAL_RADIUS / ballModel.layout.radius);
+    g.add(inner);
+    for (const [name, geo] of Object.entries(ballModel.geos)) {
+      const glow = name === 'Mat.4';
+      const mat = glow
+        ? new THREE.MeshStandardMaterial({ color: 0x66d1a0, emissive: 0x33b088, emissiveIntensity: 1.6, roughness: 0.4 })
+        : new THREE.MeshStandardMaterial({ map: ballModel.map, roughness: 0.42, metalness: 0.2, emissive: 0x112233, emissiveIntensity: 0.15 });
+      const m = new THREE.Mesh(geo, mat);
+      m.castShadow = !glow;
+      inner.add(m);
+    }
+    g.position.copy(this.mesh.position);
+    g.quaternion.copy(this.mesh.quaternion);
+    this.scene.remove(this.mesh);
+    this.mesh = g;
+    this.scene.add(g);
+    if (ballModel.shadow) { this.shadow.material.map = ballModel.shadow; this.shadow.material.needsUpdate = true; }
+  }
+
+  dispose(scene) { this.disposed = true; if (this._onModel) ballCbs.delete(this._onModel); scene.remove(this.mesh, this.halo, this.shadow); }
 
   update(alpha, dt) {
     const b = this.ball;
