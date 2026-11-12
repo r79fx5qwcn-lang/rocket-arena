@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { UU_TO_M as S } from '../physics/constants.js';
-import { buildCarModel } from './CarModel.js';
+import { buildCarModel, isCarModelReady, onCarModelReady } from './CarModel.js';
 import { makeShadowTexture, makeTextSprite } from './textures.js';
 
 const _q0 = new THREE.Quaternion(), _q1 = new THREE.Quaternion();
@@ -15,6 +15,13 @@ export class CarView {
     this.paint = paint;
     this.model = buildCarModel(paint);
     scene.add(this.model.root);
+    // procedural stand-in until the 3D model has finished loading, then swap it in place
+    this.offReady = isCarModelReady() ? null : onCarModelReady(() => {
+      if (this.disposed) return;
+      this.scene.remove(this.model.root);
+      this.model = buildCarModel(this.paint);
+      this.scene.add(this.model.root);
+    });
     this.wheelLen = this.model.wheels.map(() => 30);
     this.boostColor = new THREE.Color(paint.boost || '#ff9a2a');
     this.teamColor = new THREE.Color(car.team === 0 ? 0x3a8bff : 0xff8a2a);
@@ -32,6 +39,8 @@ export class CarView {
   }
 
   dispose() {
+    this.disposed = true;
+    if (this.offReady) this.offReady();
     this.scene.remove(this.model.root, this.shadow);
     if (this.label) this.scene.remove(this.label);
   }

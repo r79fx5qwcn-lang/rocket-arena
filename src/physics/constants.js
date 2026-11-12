@@ -128,12 +128,9 @@ export const CAR = {
   BUMP_COOLDOWN: 0.25,
 };
 
-// ---------- Car bodies (each with its own hitbox and wheel layout) ----------
+// ---------- Car body ----------
 // Dimensions in uu: half extents (forward, up, right) and hitbox centre offset from the
-// centre of mass. The archetypes follow the classic hitbox families of the genre:
-//  - Vortex : all-round "hybrid" (tall, short)      118.0 x 84.2 x 36.2
-//  - Sabre  : long and flat "plank"                  127.9 x 83.3 x 31.3
-//  - Bulldog: boxy and wide                           120.0 x 86.4 x 39.0
+// centre of mass.
 function preset(name, half, offset, wheels) {
   const hx = half.x * 2, hy = half.y * 2, hz = half.z * 2;
   return {
@@ -145,16 +142,17 @@ const W4 = (fx, fz, fr, fy, bx, bz, br, by) => [
   { x: fx, y: fy, z: -fz, r: fr, front: true }, { x: fx, y: fy, z: fz, r: fr, front: true },
   { x: bx, y: by, z: -bz, r: br, front: false }, { x: bx, y: by, z: bz, r: br, front: false },
 ];
+// The Fennec body (3D model supplied by the player, public/models/fennec): Octane-size
+// hitbox, wheel positions measured on the model (wheelbase 85.4 uu, radius 12.5 / 13.4).
+// The suspension mounts are set so the car rests level at ~17 uu like the original.
 export const CAR_PRESETS = {
-  Vortex: preset('Vortex', { x: 59.0, y: 18.08, z: 42.1 }, { x: 13.88, y: 20.75, z: 0 }, W4(51.25, 25.9, 12.5, 23.6, -33.75, 29.5, 15.0, 20.755)),
-  Sabre: preset('Sabre', { x: 63.96, y: 15.65, z: 41.64 }, { x: 9.0, y: 15.75, z: 0 }, W4(50.3, 31.1, 12.0, 21.6, -34.75, 33.0, 13.5, 20.4)),
-  Bulldog: preset('Bulldog', { x: 60.0, y: 19.5, z: 43.2 }, { x: 12.5, y: 22.0, z: 0 }, W4(51.0, 27.5, 13.5, 23.9, -35.0, 30.0, 14.5, 22.4)),
+  Fennec: preset('Fennec', { x: 59.0, y: 18.08, z: 42.1 }, { x: 13.88, y: 20.75, z: 0 }, W4(51.45, 29.5, 12.47, 23.57, -33.9, 30.3, 13.43, 19.19)),
 };
 export const CAR_MODELS = Object.keys(CAR_PRESETS);
-// legacy names from older saves
-export const LEGACY_MODEL = { Octane: 'Vortex', Dominus: 'Sabre', Breakout: 'Sabre', Fennec: 'Bulldog' };
-export function getPreset(name) { return CAR_PRESETS[name] || CAR_PRESETS[LEGACY_MODEL[name]] || CAR_PRESETS.Vortex; }
-CAR.INERTIA = CAR_PRESETS.Vortex.INERTIA;
+// every older body name (saves, online peers on older builds) maps to the Fennec
+export const LEGACY_MODEL = { Octane: 'Fennec', Dominus: 'Fennec', Breakout: 'Fennec', Vortex: 'Fennec', Sabre: 'Fennec', Bulldog: 'Fennec' };
+export function getPreset(name) { return CAR_PRESETS[name] || CAR_PRESETS[LEGACY_MODEL[name]] || CAR_PRESETS.Fennec; }
+CAR.INERTIA = CAR_PRESETS.Fennec.INERTIA;
 
 // ---------- Curves ----------
 // Throttle acceleration as a function of forward speed

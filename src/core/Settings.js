@@ -38,7 +38,7 @@ export const ACTION_LABELS = {
 export function defaultSettings() {
   return {
     player: { name: 'Joueur' },
-    car: { style: 'Vortex', body: '#1f6bff', accent: '#111318', wheels: '#c8ccd4', boost: '#ff9a2a', explosion: 'classic' },
+    car: { style: 'Fennec', body: '#1f6bff', accent: '#111318', wheels: '#c8ccd4', boost: '#ff9a2a', explosion: 'classic' },
     graphics: { quality: 'high', shadows: true, renderScale: 1, particles: true, showFps: false, crowd: true },
     audio: { master: 0.8, sfx: 0.9, engine: 0.55, ambient: 0.6 },
     camera: { fov: 110, distance: 270, height: 100, angle: -4, stiffness: 0.45, swivelSpeed: 5, ballCamDefault: true, mouseSwivel: false },
@@ -68,8 +68,7 @@ export function loadSettings() {
     if (raw) merge(s, JSON.parse(raw));
   } catch (e) { /* storage unavailable */ }
   // older saves used other body names
-  const legacy = { Octane: 'Vortex', Dominus: 'Sabre', Breakout: 'Bulldog', Fennec: 'Bulldog' };
-  if (legacy[s.car.style]) s.car.style = legacy[s.car.style];
+  s.car.style = 'Fennec'; // a single body now: every car is the Fennec
   if (!s.controls.bindings.airRoll) s.controls.bindings.airRoll = DEFAULT_BINDINGS.airRoll.slice();
   return s;
 }

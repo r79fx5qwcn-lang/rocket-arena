@@ -32,7 +32,7 @@ function raySphere(o, dir, c, R, maxDist) {
 }
 
 export class Car {
-  constructor(id, team = 0, model = 'Vortex') {
+  constructor(id, team = 0, model = 'Fennec') {
     this.id = id;
     this.team = team; // 0 blue, 1 orange
     this.setModel(model);

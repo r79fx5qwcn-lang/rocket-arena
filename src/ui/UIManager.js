@@ -7,7 +7,6 @@ import { CarView } from '../render/CarView.js';
 import { Car } from '../physics/Car.js';
 import { ACTION_LABELS, DEFAULT_BINDINGS } from '../core/Settings.js';
 import { normalizeCode } from '../net/PeerLink.js';
-import { designInfo } from '../render/carDesigns.js';
 import { getPreset } from '../physics/constants.js';
 import { EXPLOSIONS } from '../render/Effects.js';
 import { THEMES } from '../render/themes.js';
@@ -208,7 +207,7 @@ export class UIManager {
     garage.update = (dt) => {
       garage.t += dt;
       car.isBoosting = Math.sin(garage.t * 0.7) > 0.6;
-      for (const w of car.wheels) { w.spin += dt * 3; w.length = 28; }
+      for (const w of car.wheels) { w.spin += dt * 3; w.length = Math.max(0, w.def.y + 16.72 - w.def.r); }
       garage.view.update(1, dt, g.gfx.camera);
     };
     garage.rebuild();
@@ -242,12 +241,9 @@ export class UIManager {
       <h2>Garage<small>Personnalise ta voiture</small></h2>
       <div class="garage panel">
         <div class="field"><label>Pseudo</label><input type="text" maxlength="16" value="${this.game.settings.player.name}" data-name></div>
-        <div class="field"><label>Voiture (chaque voiture a sa propre hitbox)</label><div class="car-cards">${PAINTS.styles.map((st) => {
-          const d = designInfo(st), hb = getPreset(st).HITBOX_HALF;
-          return `<div class="car-card ${c.style === st ? 'on' : ''}" data-car="${st}"><b>${d.label}</b><span>${d.tagline}</span><small>${Math.round(hb.x * 2)} × ${Math.round(hb.z * 2)} × ${Math.round(hb.y * 2)}</small></div>`;
-        }).join('')}</div></div>
+        <div class="field"><label>Voiture</label><div class="car-cards"><div class="car-card on"><b>Fennec</b><span>Toutes les voitures du jeu utilisent ce modèle · choisis tes couleurs</span><small>${(() => { const hb = getPreset('Fennec').HITBOX_HALF; return `Hitbox ${Math.round(hb.x * 2)} × ${Math.round(hb.z * 2)} × ${Math.round(hb.y * 2)}`; })()}</small></div></div></div>
         <div class="field"><label>Peinture</label>${sw('body', PAINTS.body)}</div>
-        <div class="field"><label>Accents &amp; aileron</label>${sw('accent', PAINTS.accent)}</div>
+        <div class="field"><label>Bandes &amp; détails</label>${sw('accent', PAINTS.accent)}</div>
         <div class="field"><label>Jantes</label>${sw('wheels', PAINTS.wheels)}</div>
         <div class="field"><label>Couleur du boost</label>${sw('boost', PAINTS.boost)}</div>
         <div class="field"><label>Explosion de but</label><div class="seg" data-k="explosion" style="flex-wrap:wrap">${Object.entries(EXPLOSIONS).map(([k, l]) => `<button data-v="${k}" class="${(c.explosion || 'classic') === k ? 'on' : ''}">${l}</button>`).join('')}</div>
@@ -265,8 +261,6 @@ export class UIManager {
         apply();
         return;
       }
-      const card = e.target.closest('.car-card');
-      if (card) { c.style = card.dataset.car; el.querySelectorAll('.car-card').forEach((x) => x.classList.toggle('on', x === card)); apply(); return; }
       const b = e.target.closest('.seg button');
       if (b) {
         c[b.parentElement.dataset.k] = b.dataset.v;

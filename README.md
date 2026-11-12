@@ -27,13 +27,10 @@ Aucune variable d'environnement ni backend n'est nécessaire. Tout est généré
 
 ## Contenu du jeu
 
-- **3 voitures, chacune avec sa propre hitbox** (Garage) :
-  - **Vortex** : polyvalente, hitbox hybride (118 × 84 × 36 uu) ;
-  - **Sabre** : longue et plate, type « plank » (128 × 83 × 31 uu) ;
-  - **Bulldog** : carrée et large (120 × 86 × 39 uu).
+- **Une seule voiture, la Fennec** (modèle 3D fourni, dans `public/models/fennec/`) : toutes les voitures du jeu (toi, les bots, ton ami en ligne) l'utilisent, chacune avec ses couleurs. Dans le Garage, tu choisis la peinture, les bandes et détails, les jantes, la couleur du boost et l'explosion de but. Hitbox 118 × 84 × 36 uu, roues placées exactement comme sur le modèle.
 
-  Chaque voiture a aussi ses propres roues, suspensions et inertie. Les designs sont originaux, inspirés de ces catégories.
-- **7 explosions de but** (Garage) : Classique, Feu d'artifice, Tornade, Pixels, Foudre, Confettis, Trou noir. C'est l'explosion du buteur qui se déclenche.
+  Le modèle est converti depuis le FBX en un fichier binaire compact (`fennec.bin` + `fennec.json`, environ 1,4 Mo) et chargé pendant les menus. Si ces fichiers sont absents, le jeu affiche à la place une voiture procédurale d'origine.
+
 - **But marqué** : l'explosion projette les voitures proches en l'air et vers l'arrière. Puis le **replay** du but se lance (Saut ou Boost pour passer, désactivable dans Paramètres → Jeu).
 - **7 arènes à thème**, choisies au hasard ou dans « Jouer » : Stade Nocturne, Coucher de Soleil, Néo Métropole (pluie), Toundra Gelée (neige), Désert Rouge (poussière), Forêt d'Automne (feuilles), Plein Jour. Seul le décor change, le terrain est identique.
 - **Buts bien identifiés** : rideau lumineux et intérieur aux couleurs de l'équipe, surface de réparation teintée, et un panneau au-dessus de chaque but (« TON BUT · DÉFENDS » / « BUT ADVERSE · ATTAQUE »).
@@ -139,6 +136,10 @@ Résultats de `npm run test:physics` (extraits) : vitesse max 1410 uu/s ; supers
 - **Flips** : le dodge s'arrête après un tour complet et freine la rotation restante, pour que la voiture sorte du flip à plat. Après un flip trop bas qui touche le sol en pleine rotation, la voiture se remet seule sur ses roues.
 - **Caméra pendant les flicks** : la caméra voiture garde son cap pendant un dodge. La Ball Cam ignore la direction de la balle quand elle est juste au-dessus de la voiture (dribble, flick). La rotation de la caméra est plafonnée et les impacts ne la secouent plus.
 - **Replays** : non inclus. La célébration après un but est une explosion avec caméra orbitale.
+
+## Droits sur le modèle de voiture
+
+Le modèle Fennec et ses textures (`public/models/fennec/`) ont été fournis par toi et semblent provenir de Rocket League (Psyonix / Epic Games). Ils ne sont pas couverts par la licence du code. Pour un usage perso, aucun souci ; pour publier le site en public, vérifie que tu as le droit de diffuser ce modèle. Sinon, supprime le dossier `public/models/fennec/` : le jeu reprendra automatiquement la voiture procédurale d'origine.
 
 ## Licence
 
