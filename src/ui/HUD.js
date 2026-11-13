@@ -181,8 +181,14 @@ export class HUD {
       this._pingAcc = (this._pingAcc || 0) + dt;
       if (this._pingAcc > 0.5) {
         this._pingAcc = 0;
-        const rtt = session.online.link ? Math.round(session.online.link.rtt) : 0;
-        this.$.ping.textContent = `${session.online.role === 'host' ? 'Hôte' : 'Invité'} · ping ${rtt} ms`;
+        const link = session.online.link;
+        const rtt = link ? Math.round(link.rtt) : 0;
+        const net = link && link.netRtt != null ? Math.round(link.netRtt) : null;
+        let txt = `${session.online.role === 'host' ? 'Hôte' : 'Invité'} · ping ${rtt} ms`;
+        if (net != null && rtt - net > 40) txt += ` (réseau ${net} ms)`; // the rest is the PC / the game being slow
+        if (link && link.relayed) txt += ' · via relais';
+        this.$.ping.textContent = txt;
+        this.$.ping.title = link && link.relayed ? 'Pas de connexion directe entre vous deux (box / pare-feu) : les données passent par un serveur relais, le ping augmente.' : '';
         this.$.ping.classList.toggle('bad', rtt > 150);
       }
     }
