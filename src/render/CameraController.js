@@ -40,6 +40,11 @@ export class CameraController {
     this.up = new THREE.Vector3(0, 1, 0);
     this.off = new THREE.Vector3(0, 1, 0); // side of the car the camera sits on
     this.prevCar = new THREE.Vector3();
+    this.surfN = new THREE.Vector3(0, 1, 0); this.airT = 1;
+    this.lookDir = new THREE.Vector3(0, 0, 1); this.snapLook = true;
+    this.bpitch = 0;      // ball cam: elevation of the car -> ball direction
+    this.velS = new THREE.Vector3(); // smoothed car velocity (m/s)
+    this.bob = 0;         // vertical lag absorbing the car's small bounces
     this.camUp = new THREE.Vector3(0, 1, 0);
     this.view = new THREE.Vector3(0, 0, 1);
     this.pos = new THREE.Vector3(0, 5, -10);
@@ -86,7 +91,7 @@ export class CameraController {
   update(dt, ctx) {
     const st = this.settings;
     const cam = this.camera;
-    this.fovKick += ((ctx.boosting ? 4 : 0) + (ctx.supersonic ? 3 : 0) - this.fovKick) * (1 - Math.exp(-dt * 3));
+    this.fovKick += ((ctx.boosting ? 2 : 0) + (ctx.supersonic ? 3 : 0) - this.fovKick) * (1 - Math.exp(-dt * 1.5));
     this.updateFov(cam.aspect, this.fovKick);
 
     if (this.mode === 'replay') {
@@ -125,10 +130,19 @@ export class CameraController {
     //    air and on the ceiling: on the ceiling the picture stays the right way up (the car is
     //    seen from below) and nothing flips when the car drops off.
     _up.set(0, 1, 0); _off.set(0, 1, 0);
+    // the surface is remembered for a moment after the wheels leave it (bumps, small hops,
+    // wheels flickering on a ramp): the camera frame does not wobble
     if (ctx.onSurface) {
-      _off.set(0, 1, 0).applyQuaternion(ctx.carQuat);
+      this.airT = 0;
+      if (ctx.groundNormal) this.surfN.set(ctx.groundNormal.x, ctx.groundNormal.y, ctx.groundNormal.z).normalize();
+      else this.surfN.set(0, 1, 0).applyQuaternion(ctx.carQuat);
+    } else this.airT += dt;
+    // Ball cam works in the world frame, like in Rocket League (no tilt on walls / ceiling)
+    if (this.airT < 0.3) {
+      _off.copy(this.surfN);
       if (_off.y > 0.8) _off.set(0, 1, 0); // flat-ish floor: keep a level horizon
-      if (_off.y > -0.3) _up.copy(_off);
+      if (ctx.ballCam) { /* picture stays level, only the camera's side follows the surface */ }
+      else if (_off.y > -0.3) _up.copy(_off);
       else {
         // wall -> ceiling: blend from the (horizontal) wall normal to world up
         const t = Math.min(1, (-_off.y - 0.3) / 0.5);
@@ -183,7 +197,7 @@ export class CameraController {
     if (ctx.airborne && !ctx.ballCam) rate *= 0.5;
     _tmp.crossVectors(this.dir, _dir);
     const ang = Math.atan2(_tmp.dot(up), this.dir.dot(_dir));
-    const maxStep = (ctx.ballCam ? 2.4 : 4.5) * dt; // rad/s cap: no sudden whip-pans
+    const maxStep = (ctx.ballCam ? 2.6 : 4.5) * dt; // rad/s cap: no sudden whip-pans
     _q.setFromAxisAngle(up, THREE.MathUtils.clamp(ang * (1 - Math.exp(-dt * rate)), -maxStep, maxStep));
     this.dir.applyQuaternion(_q).normalize();
 
@@ -210,9 +224,33 @@ export class CameraController {
     // a wall or the ceiling the camera slides along it instead of being pushed into it
     const vp = _vp.copy(view).addScaledVector(off, -view.dot(off));
     if (vp.lengthSq() < 0.04) vp.copy(view); else vp.normalize();
-    _desired.copy(carPos).addScaledVector(vp, -dist).addScaledVector(off, height);
+    // Ball cam (Rocket League): the camera, the car and the ball are in line. The camera sits
+    // behind the car on the car -> ball axis: when the ball is high the camera drops low
+    // behind the car and looks up, so both the car and the ball stay in the picture.
+    let bp = 0;
+    if (ctx.ballCam) {
+      _tmp.copy(ballPos).sub(carPos).addScaledVector(off, -height);
+      const v = _tmp.dot(off);
+      const h = Math.sqrt(Math.max(0, _tmp.lengthSq() - v * v));
+      // ball right above the car (dribble, flick): only part of the tilt, the view stays calm
+      bp = Math.atan2(v, Math.max(h, 0.5)) * (0.45 + 0.55 * ballW);
+      bp = THREE.MathUtils.clamp(bp, -0.5, 0.95);
+    }
+    if (!this.initialized) this.bpitch = bp;
+    const dp = (bp - this.bpitch) * (1 - Math.exp(-dt * 8));
+    this.bpitch += THREE.MathUtils.clamp(dp, -2 * dt, 2 * dt);
+    const cb = Math.cos(this.bpitch), sb = Math.sin(this.bpitch);
+    // the camera itself never dives under the surface the car drives on (as in the game, it
+    // stops just above the floor and keeps tilting up toward the ball)
+    const sbPos = this.airT < 0.3 ? Math.min(sb, (height - 0.3) / dist) : sb;
+    const cbPos = Math.sqrt(Math.max(0, 1 - sbPos * sbPos));
+    // the car's small bounces (suspension, landings, bumps) are not passed on to the camera
+    if (!this.initialized) this.bob = 0;
+    else this.bob = THREE.MathUtils.clamp((this.bob - (carPos.x - this.prevCar.x) * off.x - (carPos.y - this.prevCar.y) * off.y - (carPos.z - this.prevCar.z) * off.z) * Math.exp(-dt * 9), -0.45, 0.45);
+    _desired.copy(carPos).addScaledVector(vp, -dist * cbPos).addScaledVector(off, height - dist * sbPos + this.bob);
     const frac = this.clampInside(_desired, _anchor);
-    if (frac < 0.8) {
+    // (in ball cam the camera simply moves in along the axis when a wall is in the way)
+    if (frac < (ctx.ballCam ? 0.7 : 0.8)) {
       // blocked by a wall/ceiling behind the car: try higher / more top-down viewpoints and
       // keep the one that stays furthest from the car (the car must never fill the screen)
       let best = frac * dist, bestK = -1;
@@ -244,19 +282,7 @@ export class CameraController {
 
     // ---- look target
     const angle = THREE.MathUtils.degToRad(st.angle);
-    _look.copy(carPos).addScaledVector(view, dist * 2).addScaledVector(off, height + Math.tan(angle) * dist * 3);
-    if (this.ballCamBlend > 0.001) {
-      // ball cam: look toward the ball but keep the car in frame (clamped elevation)
-      _tmp.copy(ballPos).sub(_desired);
-      const vert = _tmp.dot(up);
-      _tmp.addScaledVector(up, -vert);
-      const horiz = Math.max(_tmp.length(), 0.01);
-      let elev = Math.atan2(vert, horiz);
-      elev = THREE.MathUtils.clamp(elev, THREE.MathUtils.degToRad(-25), THREE.MathUtils.degToRad(38));
-      _tmp.multiplyScalar(1 / horiz);
-      _target.copy(_desired).addScaledVector(_tmp, 10).addScaledVector(up, Math.tan(elev) * 10);
-      _look.lerp(_target, this.ballCamBlend * (0.35 + 0.65 * ballW));
-    }
+    _look.copy(carPos).addScaledVector(view, dist * 2 * cb).addScaledVector(off, height + this.bob + (Math.tan(angle) + sb * 0.667) * dist * 3);
 
     const wasInit = this.initialized;
     const kp = this.initialized ? 1 - Math.exp(-dt * 14) : 1;
@@ -265,27 +291,43 @@ export class CameraController {
     // one (never faster than 4 rad/s) and its length eases in, so the camera never jumps and
     // never cuts through the car when the viewpoint changes near a wall or the ceiling.
     // A small lag behind the car's velocity keeps the feeling of speed.
-    _step.copy(_desired).sub(carPos).addScaledVector(ctx.carVel, -S * 0.04);
+    if (!this.initialized) this.velS.set(0, 0, 0);
+    _tmp.set(ctx.carVel.x * S, ctx.carVel.y * S, ctx.carVel.z * S);
+    this.velS.lerp(_tmp, 1 - Math.exp(-dt * 5)); // dodges / hits change the speed at once: eased
+    _step.copy(_desired).sub(carPos).addScaledVector(this.velS, -0.04);
     _carD.copy(this.pos).sub(this.prevCar);
     const dl = _step.length(), cl = _carD.length();
-    if (!this.initialized || this.prevCar.distanceTo(carPos) > 6 || cl < 0.05 || dl < 0.05) { this.pos.copy(carPos).add(_step); this.lookAt.copy(_look); } else {
+    if (!this.initialized || this.prevCar.distanceTo(carPos) > 6 || cl < 0.05 || dl < 0.05) { this.pos.copy(carPos).add(_step); this.snapLook = true; } else {
       _step.multiplyScalar(1 / dl); _carD.multiplyScalar(1 / cl);
       const ang = Math.acos(THREE.MathUtils.clamp(_carD.dot(_step), -1, 1));
       if (ang > 1e-4) turnToward(_carD, _step, Math.min(kp, 4 * dt / ang), off);
       this.pos.copy(carPos).addScaledVector(_carD, cl + (dl - cl) * kp);
-      this.lookAt.lerp(_look, kl);
     }
     this.prevCar.copy(carPos);
     this.clampInside(this.pos, _anchor); // the smoothed position must stay inside too
+    // viewing direction: eased as a direction (never faster than 7 rad/s), so the picture
+    // cannot whip around when the camera passes close to the point it looks at
+    _tmp.copy(_look).sub(this.pos);
+    if (_tmp.lengthSq() > 1e-6) {
+      _tmp.normalize();
+      if (!wasInit || this.snapLook) this.lookDir.copy(_tmp);
+      else {
+        const la = Math.acos(THREE.MathUtils.clamp(this.lookDir.dot(_tmp), -1, 1));
+        if (la > 1e-4) turnToward(this.lookDir, _tmp, Math.min(kl, 7 * dt / la), up);
+      }
+    }
+    this.snapLook = false;
+    this.lookAt.copy(this.pos).addScaledVector(this.lookDir, 10);
     this.initialized = true;
     this.keepCarInFrame(carPos);
+    this.lookDir.copy(this.lookAt).sub(this.pos).normalize();
 
     cam.position.copy(this.pos);
     if (this.shakeAmp > 0.001) {
       const t = performance.now() * 0.05;
-      cam.position.x += Math.sin(t * 1.3) * this.shakeAmp * 0.25;
-      cam.position.y += Math.sin(t * 1.7 + 1) * this.shakeAmp * 0.2;
-      cam.position.z += Math.cos(t * 1.1) * this.shakeAmp * 0.25;
+      cam.position.x += Math.sin(t * 1.3) * this.shakeAmp * 0.1;
+      cam.position.y += Math.sin(t * 1.7 + 1) * this.shakeAmp * 0.08;
+      cam.position.z += Math.cos(t * 1.1) * this.shakeAmp * 0.1;
       this.shakeAmp *= Math.exp(-dt * 6);
     }
     // roll: the screen's up is carried from frame to frame and eased toward `up`, so the

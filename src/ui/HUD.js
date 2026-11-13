@@ -42,7 +42,7 @@ export class HUD {
     if (session.attract) { this.hide(); return; }
     this.el.classList.remove('hidden');
     const free = session.mode.freeplay;
-    this.el.querySelector('.scorebar').classList.toggle('hidden', free);
+    this.el.querySelector('.scorebar').classList.toggle('hidden', !!free);
     this.$.training.classList.toggle('hidden', !free);
     const k = (a) => this.game.input.keyLabel(this.game.settings.controls.bindings[a]?.[0]);
     this.$.training.innerHTML = `<b>ENTRAÎNEMENT LIBRE</b><br>${k('reset')} : réinitialiser · B : boost illimité · F : stop<br>1 balle roulante · 2 aérien · 3 sur le toit<br>4 mur · 5 air dribble · 6 plafond<br>${k('ballCam')} : ball cam · ${k('pause')} : pause`;
@@ -55,12 +55,12 @@ export class HUD {
   replay(on) {
     if (!this.$) return;
     this.$.replay.classList.toggle('hidden', !on);
-    this.el.classList.toggle('in-replay', on);
+    this.el.classList.toggle('in-replay', !!on);
   }
 
   score(s) { this.$.s0.textContent = s[0]; this.$.s1.textContent = s[1]; }
 
-  ballCam(on) { this.$.cam.textContent = on ? 'BALL CAM' : 'CAR CAM'; this.$.cam.classList.toggle('on', on); }
+  ballCam(on) { this.$.cam.textContent = on ? 'BALL CAM' : 'CAR CAM'; this.$.cam.classList.toggle('on', !!on); }
 
   countdown(n) {
     const el = this.$.count;
@@ -152,7 +152,7 @@ export class HUD {
       const txt = MatchManager.formatTime(t, m.overtime);
       if (this.$.time.textContent !== txt) {
         this.$.time.textContent = txt;
-        this.$.time.classList.toggle('ot', m.overtime);
+        this.$.time.classList.toggle('ot', !!m.overtime);
         this.$.time.classList.toggle('low', !m.overtime && m.timeLeft <= 30);
       }
     }
@@ -167,7 +167,7 @@ export class HUD {
     if (kmh !== this.lastSpeed) {
       this.lastSpeed = kmh;
       this.$.speed.innerHTML = `${kmh}<small>${car.isSupersonic ? 'SUPERSONIQUE' : 'KM/H'}</small>`;
-      this.$.speed.classList.toggle('ss', car.isSupersonic);
+      this.$.speed.classList.toggle('ss', !!car.isSupersonic);
     }
     const flipAvail = !car.onGround && !car.hasFlipped && !car.hasDoubleJumped && car.airTimeSinceJump < 1.25;
     const flipTxt = car.onGround ? '' : (flipAvail ? '<b>FLIP DISPONIBLE</b>' : 'FLIP UTILISÉ');

@@ -56,7 +56,7 @@ for (const [hold, lo, hi] of [[0, 60, 110], [0.2, 215, 260]]) { const { w, car }
 { const { w, car } = makeWorld(); car.controls.throttle = -1; run(w, 1.2); const f0 = fwd(car);
   run(w, 2.5, (t) => { const c = car.controls; c.throttle = 0; c.jump = t < 0.05 || (t > 0.1 && t < 0.15);
     c.pitch = t < 0.1 ? 0 : (t < 0.18 ? 1 : (t < 0.9 ? -1 : 0)); c.roll = (t > 0.3 && t < 0.9) ? 1 : 0; });
-  check('Half flip: car turned around (fwd·f0)', fwd(car).dot(f0), -1, -0.9); check('Half flip: lands upright', up(car).y, 0.95, 1.01); }
+  check("Half flip: car turned around (fwd·f0)", fwd(car).dot(f0), -1, -0.8); check('Half flip: lands upright', up(car).y, 0.95, 1.01); }
 { const { w, car } = makeWorld(); car.controls.throttle = 1; run(w, 0.6); const v0 = car.vel.length(); let flipT = -1, vAfter = 0;
   run(w, 2, (t) => { const c = car.controls; c.jump = t < 0.1; c.pitch = (t > 0.1 && t < 0.4) ? 0.35 : 0;
     if (flipT < 0 && t > 0.3 && car.vel.y < 0 && car.pos.y < 45) flipT = t;

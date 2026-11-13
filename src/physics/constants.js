@@ -81,6 +81,8 @@ export const CAR = {
   BOOST_SPAWN: 33.3,
   POWERSLIDE_RISE: 5,
   POWERSLIDE_FALL: 2,
+  // ceiling: extra grip from speed (below MIN the car falls off, above FULL it holds)
+  CEILING_GRIP: 2.0, CEILING_GRIP_MIN_SPEED: 900, CEILING_GRIP_FULL_SPEED: 1500,
   // arcade drift (powerslide on the ground)
   DRIFT_MIN_SPEED: 450,     // uu/s to start a drift
   DRIFT_YAW_RATE: 2.6,      // rad/s at full steer

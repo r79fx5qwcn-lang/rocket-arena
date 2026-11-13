@@ -459,7 +459,7 @@ export class Game {
       case 'flipReset': if (isPlayer) { this.audio.play('flipReset'); this.hud.notify('FLIP RESET !', 'gold'); } break;
       case 'carImpact': this.audio.play('carImpact', { pos: posOf(e.car), strength: e.strength });  break;
       case 'carHit': this.audio.play('carImpact', { pos: { x: e.point.x * S, y: e.point.y * S, z: e.point.z * S }, strength: e.strength * 2 }); break;
-      case 'bump': this.audio.play('bump', { pos: posOf(e.victim) }); if (e.victim === s.player || e.attacker === s.player) this.camCtl.shake(0.4); break;
+      case 'bump': this.audio.play('bump', { pos: posOf(e.victim) }); if (e.victim === s.player || e.attacker === s.player) this.camCtl.shake(0.25); break;
       case 'demo':
         this.effects.demo(e.point, e.victim.team);
         this.audio.play('demo', { pos: { x: e.point.x * S, y: e.point.y * S, z: e.point.z * S } });
@@ -510,7 +510,7 @@ export class Game {
       const pv = s.carViews[0].model.root;
       const ballPos = s.ballView.mesh.position;
       if (!car.demolished) this.camCtl.update(dt, {
-        carPos: pv.position, carQuat: pv.quaternion, carVel: car.vel, ballPos, onSurface: car.onGround,
+        carPos: pv.position, carQuat: pv.quaternion, carVel: car.vel, ballPos, onSurface: car.onGround, groundNormal: car.groundNormal,
         ballCam: this.ballCam && !s.world.ball.hidden, dodging: car.isFlipping && car.hasFlipDir, airborne: !car.onGround, boosting: car.isBoosting, supersonic: car.isSupersonic, swivel: this.input.swivel,
       });
       this.gfx.focusShadow(pv.position.x, 0, pv.position.z);

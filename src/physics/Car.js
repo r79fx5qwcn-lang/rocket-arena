@@ -393,8 +393,16 @@ export class Car {
 
       // ---- sticky force (lets cars drive on walls and ceiling)
       if (surf >= 3 && !this.isJumping) {
+        // Rocket League: 0.5 g toward the surface, + (1 - |up.y|) g when driving. On a wall
+        // that holds the car; upside down it is weaker than gravity, so the car peels off
+        // the ceiling. Speed adds grip there: fast enough, the car stays on the ceiling;
+        // too slow, it drops (and keeps its flip, as after a ceiling shot).
         let scale = 0.5;
-        if (fullStick) scale += 1 - u.y;
+        if (fullStick) scale += 1 - Math.abs(u.y);
+        if (u.y < 0) {
+          const k = Math.min(1, Math.max(0, (aspd - CAR.CEILING_GRIP_MIN_SPEED) / (CAR.CEILING_GRIP_FULL_SPEED - CAR.CEILING_GRIP_MIN_SPEED)));
+          scale += CAR.CEILING_GRIP * k * -u.y;
+        }
         this.vel.addScaled(u, -GRAVITY * scale * dt);
       }
     }

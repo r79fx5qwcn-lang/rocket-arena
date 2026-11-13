@@ -63,6 +63,19 @@ export function collideCarArena(car) {
   car.bodyContactNormal.set(0, 0, 0);
   for (let i = 0; i < count; i++) car.bodyContactNormal.add(contacts[i].n);
   car.bodyContactNormal.normalize();
+  // During a dodge the body may scrape the surface (dodge started very low: wave dash,
+  // flick, quick flip). The contact must not stop the rotation, or the car lands on its
+  // nose / side / roof: it only stops the car from sinking in (impulse through the centre
+  // of mass, no friction), so the flip always finishes its turn and lands on the wheels.
+  // (only while the car is really spinning: a cancelled flip, e.g. a half flip, lands normally)
+  _tmp.copy(car.angVel).applyQuatInv(car.rot);
+  const flipSpin = Math.abs(_tmp.x * car.flipRelTorque.x + _tmp.z * car.flipRelTorque.z); // spin around the dodge axis
+  if (car.isFlipping && car.hasFlipDir && flipSpin > 3) {
+    const n = car.bodyContactNormal;
+    const vn = car.vel.dot(n);
+    if (vn < 0) { impact = -vn; car.vel.addScaled(n, -vn); }
+    return impact;
+  }
   // two passes of sequential impulses
   for (let pass = 0; pass < 2; pass++) {
     for (let i = 0; i < count; i++) {
