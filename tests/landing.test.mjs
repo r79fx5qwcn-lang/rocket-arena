@@ -29,7 +29,7 @@ function flick(name, P, Y, off, hold, delay, speed, minGain, assist = 0) {
 for (const sp of [0, 700]) {
   flick(`front flick @${sp}`, -1, 0, 40, 0.15, 0.12, sp, 500);
   flick(`45° flick @${sp}`, -0.7, 0.7, 40, 0.15, 0.06, sp, 600);
-  flick(`musty flick @${sp}`, 1, 0, -40, 0.08, 0.06, sp, 400);
+  flick(`musty flick @${sp}`, 1, 0, -40, 0.2, 0.3, sp, 400);
 }
 // same flicks with the dribble assist (default in game) — must not kill flicks
 flick('front flick, assist 0.7', -1, 0, 40, 0.08, 0.03, 700, 600, 0.7);

@@ -187,6 +187,14 @@ export const BALL_HIT = {
   FACTOR_CURVE: new Curve([[0, 0.65], [500, 0.65], [2300, 0.55], [4600, 0.30]]),
 };
 
+// Flicks (dodge with the ball carried on the roof): speed given to the ball, uu/s
+export const FLICK = {
+  FORWARD: 900, SIDE: 700, BACK: 450,  // horizontal speed along the dodge direction
+  MUSTY: 600,                          // back dodge with the nose pitched up: the ball goes forward
+  UP: 330, UP_BACK: 150,               // upward speed (+ extra for back flicks: a lob)
+  FULL_GAP: 12, MAX_GAP: 55,           // full power while the ball is within 12 uu of the roof, none beyond 55
+};
+
 // Bumps / demos
 export const BUMP_VEL_GROUND_CURVE = new Curve([[0, 5 / 6], [1400, 1100], [2200, 1530]]);
 export const BUMP_VEL_AIR_CURVE = new Curve([[0, 5 / 6], [1400, 1390], [2200, 1945]]);

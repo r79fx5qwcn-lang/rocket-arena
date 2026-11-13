@@ -77,10 +77,12 @@ export class BallView {
   update(alpha, dt) {
     const b = this.ball;
     const m = this.mesh;
+    const ro = b.renderOffset; // smooths the corrections received from the host (online)
+    if (ro.x || ro.y || ro.z) { ro.scale(Math.exp(-dt * 12)); if (ro.lengthSq() < 0.01) ro.set(0, 0, 0); }
     m.position.set(
-      (b.prevPos.x + (b.pos.x - b.prevPos.x) * alpha) * S,
-      (b.prevPos.y + (b.pos.y - b.prevPos.y) * alpha) * S,
-      (b.prevPos.z + (b.pos.z - b.prevPos.z) * alpha) * S,
+      (b.prevPos.x + (b.pos.x - b.prevPos.x) * alpha + ro.x) * S,
+      (b.prevPos.y + (b.pos.y - b.prevPos.y) * alpha + ro.y) * S,
+      (b.prevPos.z + (b.pos.z - b.prevPos.z) * alpha + ro.z) * S,
     );
     _q0.set(b.prevRot.x, b.prevRot.y, b.prevRot.z, b.prevRot.w);
     _q1.set(b.rot.x, b.rot.y, b.rot.z, b.rot.w);

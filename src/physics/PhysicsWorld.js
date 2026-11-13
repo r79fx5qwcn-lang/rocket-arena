@@ -4,7 +4,7 @@
 import { DT, CAR, RESPAWN_SPOTS, BALL } from './constants.js';
 import { Ball } from './Ball.js';
 import { BoostPads } from './BoostPads.js';
-import { collideCarArena, collideCarBall, collideCars, dribbleAssist } from './collisions.js';
+import { collideCarArena, collideCarBall, collideCars, dribbleAssist, flickImpulse } from './collisions.js';
 import { isInGoal } from './Arena.js';
 import { Vec3 } from './math.js';
 
@@ -40,6 +40,16 @@ export class PhysicsWorld {
     // forces, suspension, controls
     for (const car of cars) {
       car.update(dt, ball);
+      for (const e of car.events) {
+        if (e === 'flip') {
+          // dodge started with the ball on the roof: flick
+          const power = flickImpulse(car, ball);
+          if (power > 0) {
+            car.lastTouchTick = this.tick; this.lastTouch = car; car.stats.touches++;
+            ev.push({ type: 'ballHit', car, strength: power, point: ball.pos.clone(), ballSpeed: ball.vel.length() });
+          }
+        }
+      }
       for (const e of car.events) ev.push({ type: e, car });
       car.events.length = 0;
     }

@@ -56,10 +56,14 @@ export class CarView {
     if (this.label) this.label.visible = !car.demolished;
     if (car.demolished) return;
 
+    // renderOffset: online, a correction from the host is not shown at once, the car glides
+    // to its corrected position in about a tenth of a second
+    const ro = car.renderOffset;
+    if (ro.x || ro.y || ro.z) { ro.scale(Math.exp(-dt * 12)); if (ro.lengthSq() < 0.01) ro.set(0, 0, 0); }
     root.position.set(
-      (car.prevPos.x + (car.pos.x - car.prevPos.x) * alpha) * S,
-      (car.prevPos.y + (car.pos.y - car.prevPos.y) * alpha) * S,
-      (car.prevPos.z + (car.pos.z - car.prevPos.z) * alpha) * S,
+      (car.prevPos.x + (car.pos.x - car.prevPos.x) * alpha + ro.x) * S,
+      (car.prevPos.y + (car.pos.y - car.prevPos.y) * alpha + ro.y) * S,
+      (car.prevPos.z + (car.pos.z - car.prevPos.z) * alpha + ro.z) * S,
     );
     _q0.set(car.prevRot.x, car.prevRot.y, car.prevRot.z, car.prevRot.w);
     _q1.set(car.rot.x, car.rot.y, car.rot.z, car.rot.w);

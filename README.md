@@ -57,6 +57,8 @@ Pour limiter le lag :
 - **Canal non fiable pour le temps réel.** Les positions (60 fois par seconde) et les commandes passent par un canal qui ne renvoie jamais un paquet perdu, comme dans les vrais jeux en ligne. Un paquet perdu ne bloque donc pas les suivants (c'est ce qui créait les gros pics de ping).
 - **Commandes répétées.** Chaque envoi contient les 12 dernières commandes de l'invité : perdre quelques paquets ne change rien.
 - **Tampon adaptatif chez l'hôte.** Il absorbe les variations de ping sans jeter de commandes.
+- **Corrections en douceur.** Quand l'hôte corrige la position de la balle ou d'une voiture, l'invité la voit glisser vers sa vraie position en un dixième de seconde au lieu de sauter.
+- **Onglet en arrière-plan.** La partie continue de tourner si l'un des deux joueurs change d'onglet.
 - **Prédiction locale.** L'invité joue sa voiture sans attendre l'hôte et se recale en douceur.
 - **Pas d'accumulation.** Si la connexion sature, les positions trop anciennes ne sont pas envoyées au lieu de s'empiler.
 
@@ -138,10 +140,10 @@ Résultats de `npm run test:physics` (extraits) : vitesse max 1410 uu/s ; supers
 - **Contacts balle → voiture** : la balle fait beaucoup moins tourner la voiture qu'un solide « brut ». Les flicks, dribbles et air dribbles restent ainsi contrôlables. Couchée sur le côté, la voiture se remet seule sur ses roues. Sur le toit, il faut sauter (auto-flip), comme dans RL.
 - **Dodges** : l'accélération angulaire (environ 100 rad/s²) et la vitesse de rotation pendant le dodge (10 rad/s, contre 5,5 hors dodge) ont été réglées pour qu'un flip fasse un tour complet en environ 0,65 s, comme dans le jeu. Les valeurs exactes de RL ne sont pas publiques.
 - **Plafond** : la sticky force est un peu plus forte au plafond pour pouvoir y rouler en accélérant. En relâchant, on tombe en gardant son flip (ceiling shot).
-- **Flicks** : 100 % physiques. L'impulsion de frappe tient compte de la vitesse de la carrosserie au point de contact, donc une voiture qui tourne pendant un dodge frappe plus fort. Mesuré (`npm run test:landing`) : front flick et flick à 45° autour de +900 à +1100 uu/s, musty jusqu'à +1500 uu/s, toujours avec un atterrissage sur les roues.
+- **Flicks** : au moment où tu lances un dodge avec la balle portée sur le toit (posée ou juste décollée par le saut), la balle part dans la direction du dodge : vers l'avant (+900 uu/s environ), sur le côté (+700), en diagonale, ou en cloche vers l'arrière. Avec le nez relevé, un dodge arrière donne un musty (la balle part vers l'avant). `npm run test:flick` vérifie 648 flicks (3 voitures, 4 directions, plusieurs vitesses, positions de balle et timings) : tous partent dans la bonne direction et la voiture retombe sur ses roues.
 - **Multijoueur en ligne** : pair à pair, à 2 humains maximum (le reste des équipes en bots). L'hôte a l'avantage du ping 0. L'invité voit la balle et les autres voitures avec le délai réseau, compensé par la prédiction.
 - **Flips** : le dodge s'arrête après un tour complet et freine la rotation restante, pour que la voiture sorte du flip à plat. Après un flip trop bas qui touche le sol en pleine rotation, la voiture se remet seule sur ses roues.
-- **Caméra** : ta voiture reste toujours à l'écran. En Ball Cam, si la balle est très haute, la caméra ne lève plus la vue au point de perdre la voiture. Collée à un mur ou au plafond, la caméra choisit un point de vue plus haut ou s'écarte de la paroi au lieu de se coller à la voiture.
+- **Caméra** : ta voiture reste toujours à l'écran. Sur les murs, la caméra s'aligne sur la paroi. Au plafond, l'image reste à l'endroit (la voiture est vue par en dessous) et rien ne se retourne quand tu te décroches. La caméra tourne autour de la voiture sans jamais sauter ni la traverser, même quand elle doit changer de point de vue contre une paroi.
 - **Caméra pendant les flicks** : la caméra voiture garde son cap pendant un dodge. La Ball Cam ignore la direction de la balle quand elle est juste au-dessus de la voiture (dribble, flick). La rotation de la caméra est plafonnée et les impacts ne la secouent plus.
 - **Replays** : non inclus. La célébration après un but est une explosion avec caméra orbitale.
 

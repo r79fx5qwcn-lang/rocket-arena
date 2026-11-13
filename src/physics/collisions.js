@@ -1,6 +1,6 @@
 // Collision detection & impulse resolution: car vs arena, car vs ball, car vs car.
 import { Vec3 } from './math.js';
-import { CAR, BALL_HIT, BUMP_VEL_GROUND_CURVE, BUMP_VEL_AIR_CURVE, BUMP_UPWARD_CURVE } from './constants.js';
+import { CAR, BALL_HIT, FLICK, BUMP_VEL_GROUND_CURVE, BUMP_VEL_AIR_CURVE, BUMP_UPWARD_CURVE } from './constants.js';
 import { arenaSdf, arenaNormal } from './Arena.js';
 
 // The ball barely spins the car (like in RL): its contacts act on a stiffer rotational inertia.
@@ -127,7 +127,7 @@ export function collideCarBall(car, ball, tick) {
 
   // relative velocity before the contact (for the Psyonix extra impulse)
   // (uses the velocity of the car's surface at the contact point, so a car spinning
-  // during a dodge -- flicks, flip shots -- hits harder, as players expect)
+  // during a dodge -- flip shots -- hits harder, as players expect)
   _rel.copy(_cp).sub(car.pos);
   car.pointVelocity(_rel, _tmp2);
   _tmp2.scale(-1).add(ball.vel);
@@ -168,7 +168,8 @@ export function collideCarBall(car, ball, tick) {
 
   // Psyonix "extra impulse": makes hits feel like Rocket League
   let extra = 0;
-  // not re-applied while the contact is sustained (ball resting / dribbled on the roof)
+  // not re-applied while the contact is sustained (ball resting / dribbled on the roof);
+  // flicks from a dribble are powered by flickImpulse() below
   if (tick > car.lastExtraHitTick + 12 && preRelSpeed > 0) {
     _tmp.copy(ball.pos).sub(car.pos);
     _tmp.y *= BALL_HIT.Z_SCALE;
@@ -273,6 +274,40 @@ export function collideCars(a, b, time) {
     return { type: 'bump', attacker: att, victim: vic, strength: speedTowards, point: c.p.clone() };
   }
   return result;
+}
+
+/**
+ * Flick: called on the tick a dodge starts. If the ball is carried on the roof (resting on
+ * it or popped just above it by the jump), the dodge throws it in the dodge direction: a
+ * front flick sends it forward, a side flick sideways, a back flick lobs it backwards.
+ * Returns the speed given to the ball (0 if the ball was not on the roof).
+ */
+export function flickImpulse(car, ball) {
+  if (car.demolished || ball.frozen || !car.hasFlipDir) return 0;
+  const HB = car.hb, HO = car.ho, R = ball.radius;
+  _l.copy(ball.pos).sub(car.pos).applyQuatInv(car.rot);
+  _l.x -= HO.x; _l.y -= HO.y; _l.z -= HO.z;
+  const gap = _l.y - HB.y - R; // ball surface above the roof
+  if (gap < -20 || gap > FLICK.MAX_GAP) return 0;
+  if (Math.abs(_l.x) > HB.x + 20 || Math.abs(_l.z) > HB.z + 20) return 0;
+  const closeness = gap <= FLICK.FULL_GAP ? 1 : 1 - (gap - FLICK.FULL_GAP) / (FLICK.MAX_GAP - FLICK.FULL_GAP);
+  // dodge direction in the horizontal plane: flipRelTorque = (side, 0, -forward)
+  const dx = -car.flipRelTorque.z, dy = car.flipRelTorque.x;
+  car.forward(_tmp2);
+  _v.set(_tmp2.x, 0, _tmp2.z);
+  if (_v.lengthSq() < 1e-4) return 0;
+  _v.normalize();
+  _tmp.set(-_v.z, 0, _v.x); // right
+  const horiz = FLICK.SIDE + (FLICK.FORWARD - FLICK.SIDE) * Math.max(dx, 0) + (FLICK.BACK - FLICK.SIDE) * Math.max(-dx, 0);
+  const upv = FLICK.UP + FLICK.UP_BACK * Math.max(-dx, 0);
+  if (dx < -0.5 && _tmp2.y > 0.25) {
+    // musty flick: nose up, back dodge -> the tail whips the ball forward and up
+    _J.set(0, 0, 0).addScaled(_v, -dx * FLICK.MUSTY).addScaled(_tmp, dy * horiz);
+  } else _J.set(0, 0, 0).addScaled(_v, dx * horiz).addScaled(_tmp, dy * horiz);
+  _J.y += upv;
+  _J.scale(closeness);
+  ball.vel.add(_J);
+  return _J.length();
 }
 
 /**

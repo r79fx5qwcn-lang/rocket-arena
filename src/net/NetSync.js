@@ -11,7 +11,7 @@
 import { Controls } from '../physics/Controls.js';
 import { Vec3 } from '../physics/math.js';
 
-export const NET_VERSION = 2;
+export const NET_VERSION = 3;
 export const SNAPSHOT_EVERY = 2; // ticks (120 / 2 = 60 snapshots per second)
 export const INPUT_REDUNDANCY = 12; // every input packet repeats the last 12 inputs (lost packets don't matter)
 const BUFFER_TARGET = 3, BUFFER_HIGH = 7;
@@ -108,8 +108,10 @@ export class GuestSync {
     w.setState(snap.w);
     w.goalDetection = false;
     const ack = snap.a;
+    let resim = 0;
     if (ack >= 0 && ack <= this.tick) {
       for (let k = ack + 1; k <= this.tick; k++) {
+        resim++;
         const c = this.history.get(k);
         if (c) this.player.controls.unpack(c);
         w.step();
@@ -125,11 +127,13 @@ export class GuestSync {
       const d = _old.length();
       if (c === this.player) err = d;
       if (d < 400) c.renderOffset.add(_old); else c.renderOffset.set(0, 0, 0);
-      c.prevPos.copy(c.pos);
+      // keep the previous-tick state produced by the re-simulation: the renderer interpolates
+      // between ticks (needed on 120/144 Hz screens, where some frames run no physics tick)
+      if (!resim) { c.prevPos.copy(c.pos); c.prevRot.copy(c.rot); }
     });
     _old.copy(ballBefore).sub(w.ball.pos);
     if (_old.length() < 400) w.ball.renderOffset.add(_old); else w.ball.renderOffset.set(0, 0, 0);
-    w.ball.prevPos.copy(w.ball.pos);
+    if (!resim) { w.ball.prevPos.copy(w.ball.pos); w.ball.prevRot.copy(w.ball.rot); }
     this.lastError = err;
     this.corrections++;
     return true;

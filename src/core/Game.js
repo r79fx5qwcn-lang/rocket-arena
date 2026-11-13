@@ -81,6 +81,7 @@ export class Game {
     window.addEventListener('keydown', unlock);
 
     this.startAttract();
+    this.startBackgroundTicker();
     requestAnimationFrame((t) => this.loop(t));
   }
 
@@ -293,6 +294,26 @@ export class Game {
   // ---------------------------------------------------------------- loop
   loop(now) {
     requestAnimationFrame((t) => this.loop(t));
+    this.frame(now, true);
+  }
+
+  /**
+   * Online, the match must keep running when the tab is hidden (browsers stop
+   * requestAnimationFrame there): a tiny worker keeps ticking the simulation, without
+   * rendering, so the other player never sees the game freeze.
+   */
+  startBackgroundTicker() {
+    try {
+      const src = 'setInterval(function () { postMessage(0); }, 16);';
+      const worker = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
+      worker.onmessage = () => {
+        if (typeof document !== 'undefined' && document.hidden && this.session && this.session.online) this.frame(performance.now(), false);
+      };
+      this.bgTicker = worker;
+    } catch (e) { /* workers unavailable: the game simply pauses in the background */ }
+  }
+
+  frame(now, draw) {
     let dt = (now - this.last) / 1000;
     this.last = now;
     if (dt > 0.1) dt = 0.1;
@@ -312,7 +333,7 @@ export class Game {
       if (s.online) s.online.afterFrame();
     }
     const alpha = this.paused && !(s && s.online) ? 1 : this.acc / DT;
-    this.render(dt, alpha);
+    if (draw) this.render(dt, alpha);
     this.input.clearEdges();
   }
 
